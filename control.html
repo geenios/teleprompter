@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teleprompter Control</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #141414;
+    --panel-2: #1a1a1a;
+    --text-color: #f0f0f0;
+    --muted: #8a8a8a;
+    --accent: #ffc800;
+    --border: #2a2a2a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    height:100%; background:var(--bg); color:var(--text-color);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .mono { font-family: "SF Mono", "Courier New", monospace; }
+
+  /* ---- Connection screen (this page hosts the session) ---- */
+  #connectionPanel {
+    height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; text-align:center; padding:24px;
+  }
+  #connectionPanel.hidden { display:none; }
+  #connectionPanel h1 { font-size:20px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); }
+  #connectionPanel p { color:var(--muted); font-size:14px; max-width:360px; line-height:1.5; }
+  #hostCode {
+    font-size:56px; letter-spacing:0.18em; text-align:center;
+    background:var(--panel); border:2px solid var(--accent); color:var(--accent);
+    border-radius:10px; padding:18px 28px;
+  }
+  #connectionStatus { color:var(--muted); font-size:13px; min-height:18px; }
+  #newCodeBtn {
+    background:none; border:1px solid var(--border); color:var(--text-color);
+    padding:10px 20px; border-radius:8px; font-size:14px; cursor:pointer;
+  }
+  #newCodeBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---- Main control screen ---- */
+  #mainPanel { display:none; height:100vh; }
+  #mainPanel.visible { display:grid; grid-template-columns: 1.4fr 1fr; gap:1px; background:var(--border); }
+  @media (max-width: 800px) {
+    #mainPanel.visible { grid-template-columns: 1fr; }
+  }
+
+  #editorPane, #sidePane { background:var(--bg); padding:20px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
+  #editorPane { overflow:hidden; } /* the editor itself scrolls, the pane shouldn't */
+
+  .label {
+    font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); font-weight:600;
+  }
+
+
+  /* Editor with highlight overlay + scrubber */
+  #editorRow { flex:1; display:flex; gap:10px; min-height:0; }
+  #editorStack { position:relative; flex:1; min-height:0; }
+  #highlightLayer, #textArea {
+    position:absolute; inset:0; margin:0; box-sizing:border-box;
+    padding:16px; font-size:16px; line-height:1.6;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    white-space:pre-wrap; word-wrap:break-word; overflow-y:auto;
+    border-radius:8px;
+  }
+  #highlightLayer {
+    color:transparent; background:var(--panel); border:1px solid transparent;
+    pointer-events:none; z-index:1;
+  }
+  #textArea {
+    background:transparent; color:var(--text-color); border:1px solid var(--border);
+    resize:none; outline:none; z-index:2; caret-color: var(--accent);
+  }
+  #textArea:focus { border-color: var(--accent); }
+
+  #scrubberTrack {
+    width:16px; background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    position:relative; flex-shrink:0; cursor:pointer;
+  }
+  #scrubberThumb {
+    position:absolute; left:2px; right:2px; min-height:24px;
+    background:var(--accent); border-radius:6px; opacity:0.85; cursor:grab;
+  }
+  #scrubberThumb:active { cursor:grabbing; opacity:1; }
+
+  /* Monitor / live preview (to-scale replica of the phone screen, sized in JS) */
+  #monitor {
+    background:#000; border:1px solid var(--border); border-radius:8px;
+    overflow:hidden; position:relative; margin: 0 auto;
+  }
+  #previewBox {
+    width:100%; height:100%; overflow:hidden; position:relative;
+    container-type: size; cursor: grab; touch-action: none;
+    user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;
+  }
+  #previewBox.dragging { cursor: grabbing; }
+  #previewText {
+    color:#fff; padding: 60cqh 6cqw; white-space:pre-wrap; word-wrap:break-word; line-height:1.5;
+    transform-origin:center;
+    user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;
+  }
+  .highlight-span { background: rgba(255, 200, 0, 0.75); border-radius:2px; }
+
+  /* Controls */
+  .control-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .btn {
+    background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
+    border-radius:8px; padding:10px 18px; font-size:14px; cursor:pointer; flex:1;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .btn.active { border-color:var(--accent); color:var(--accent); }
+  .btn-row { display:flex; gap:8px; align-items:stretch; }
+  .icon-btn {
+    flex: 0 0 48px; width:48px; height:48px; padding:0; border-radius:12px;
+  }
+  .icon-btn svg { width:22px; height:22px; }
+
+  input[type="range"] { width:100%; accent-color: var(--accent); }
+  .slider-row { display:flex; flex-direction:column; gap:6px; }
+  .slider-row .control-row .label { margin:0; }
+  .value-display { font-size:13px; color:var(--accent); }
+
+  .slider-with-buttons { display:flex; align-items:center; gap:8px; }
+  .slider-with-buttons input[type="range"] { flex:1; }
+  .step-btn {
+    background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
+    border-radius:6px; width:32px; height:32px; font-size:18px; line-height:1; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; user-select:none;
+  }
+  .step-btn:active { border-color: var(--accent); color: var(--accent); }
+
+  .select-input {
+    background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
+    border-radius:8px; padding:10px; font-size:14px; outline:none; width:100%;
+  }
+  .select-input:focus { border-color: var(--accent); }
+
+  hr.divider { border:none; border-top:1px solid var(--border); margin:4px 0; }
+</style>
+</head>
+<body>
+
+  <div id="connectionPanel">
+    <h1>Teleprompter Control</h1>
+    <p>On the prompter, tap the status badge in the corner and enter this code to connect, edit the script live, and adjust every setting remotely.</p>
+    <div id="hostCode" class="mono">------</div>
+    <div id="connectionStatus">Waiting for the prompter to connect...</div>
+    <button id="newCodeBtn">Generate new code</button>
+  </div>
+
+  <div id="mainPanel">
+    <div id="editorPane">
+      <div class="label">Script</div>
+      <div id="editorRow">
+        <div id="editorStack">
+          <div id="highlightLayer" aria-hidden="true"></div>
+          <textarea id="textArea" spellcheck="false" placeholder="Type the script here. It updates on the prompter as you type."></textarea>
+        </div>
+        <div id="scrubberTrack">
+          <div id="scrubberThumb"></div>
+        </div>
+      </div>
+    </div>
+    <div id="sidePane">
+      <div class="label">Live preview</div>
+      <div id="monitor">
+        <div id="previewBox">
+          <div id="previewText"></div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <div class="btn-row">
+        <button class="btn" id="playBtn">Play</button>
+        <button class="btn" id="resetBtn">Restart</button>
+        <button class="btn icon-btn" id="mirrorHBtn" title="Flip horizontal" aria-label="Flip horizontal">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="11" y="2" width="2" height="20" opacity="0.4"/><path d="M3 12l5-4.5v9z"/><path d="M21 12l-5-4.5v9z"/></svg>
+        </button>
+        <button class="btn icon-btn" id="mirrorVBtn" title="Flip vertical" aria-label="Flip vertical">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="11" width="20" height="2" opacity="0.4"/><path d="M12 3l4.5 5h-9z"/><path d="M12 21l4.5-5h-9z"/></svg>
+        </button>
+      </div>
+
+      <div class="slider-row">
+        <div class="control-row">
+          <span class="label">Font size</span>
+          <span class="value-display mono" id="fontSizeValue">48px</span>
+        </div>
+        <div class="slider-with-buttons">
+          <button class="step-btn" id="fontDecBtn">−</button>
+          <input type="range" id="fontSizeSlider" min="20" max="200" step="1">
+          <button class="step-btn" id="fontIncBtn">+</button>
+        </div>
+      </div>
+
+      <div class="slider-row">
+        <div class="control-row">
+          <span class="label">Scroll speed</span>
+          <span class="value-display mono" id="speedValue">50</span>
+        </div>
+        <div class="slider-with-buttons">
+          <button class="step-btn" id="speedDecBtn">−</button>
+          <input type="range" id="speedSlider" min="0" max="400" step="1">
+          <button class="step-btn" id="speedIncBtn">+</button>
+        </div>
+      </div>
+
+      <div class="slider-row">
+        <div class="control-row">
+          <span class="label">Font</span>
+        </div>
+        <select id="fontFamilySelect" class="select-input"></select>
+      </div>
+
+      <hr class="divider">
+      <div class="control-row">
+        <div id="sideStatus" class="label">CONNECTED</div>
+        <div class="btn-row" style="flex:0 0 auto; gap:8px;">
+          <button class="btn" id="copyBtn" style="flex:0 0 auto; padding:8px 14px;">Copy</button>
+          <button class="btn" id="exportBtn" style="flex:0 0 auto; padding:8px 14px;">Export .md</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const connectionPanel = document.getElementById('connectionPanel');
+  const mainPanel = document.getElementById('mainPanel');
+  const hostCode = document.getElementById('hostCode');
+  const connectionStatus = document.getElementById('connectionStatus');
+  const newCodeBtn = document.getElementById('newCodeBtn');
+
+  const highlightLayer = document.getElementById('highlightLayer');
+  const textArea = document.getElementById('textArea');
+  const scrubberTrack = document.getElementById('scrubberTrack');
+  const scrubberThumb = document.getElementById('scrubberThumb');
+  const exportBtn = document.getElementById('exportBtn');
+  const copyBtn = document.getElementById('copyBtn');
+
+  const playBtn = document.getElementById('playBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const mirrorHBtn = document.getElementById('mirrorHBtn');
+  const mirrorVBtn = document.getElementById('mirrorVBtn');
+  const fontSizeSlider = document.getElementById('fontSizeSlider');
+  const fontSizeValue = document.getElementById('fontSizeValue');
+  const fontIncBtn = document.getElementById('fontIncBtn');
+  const fontDecBtn = document.getElementById('fontDecBtn');
+  const speedSlider = document.getElementById('speedSlider');
+  const speedValue = document.getElementById('speedValue');
+  const speedIncBtn = document.getElementById('speedIncBtn');
+  const speedDecBtn = document.getElementById('speedDecBtn');
+  const fontFamilySelect = document.getElementById('fontFamilySelect');
+  const sidePane = document.getElementById('sidePane');
+  const monitor = document.getElementById('monitor');
+  const previewBox = document.getElementById('previewBox');
+  const previewText = document.getElementById('previewText');
+
+  // Font choices well suited to on-screen reading at speed
+  const FONTS = {
+    verdana:   { label: 'Verdana',               stack: 'Verdana, Geneva, sans-serif' },
+    opensans:  { label: 'Open Sans',             stack: "'Open Sans', sans-serif" },
+    atkinson:  { label: 'Atkinson Hyperlegible', stack: "'Atkinson Hyperlegible', sans-serif" },
+    mono:      { label: 'Monospace',             stack: "'Courier New', monospace" }
+  };
+  Object.entries(FONTS).forEach(([key, f]) => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = f.label;
+    opt.style.fontFamily = f.stack;
+    fontFamilySelect.appendChild(opt);
+  });
+
+  let state = {
+    text: '',
+    fontSize: 48,
+    fontFamily: 'opensans',
+    scrollSpeed: 50,
+    mirroredH: false,
+    mirroredV: false,
+    playState: 'paused'
+  };
+  let scrollPct = 0;            // last known scroll position on the phone, 0-1
+  let phoneViewport = { width: 390, height: 844 }; // default until the phone reports its size
+  let previewScale = 1;         // preview px per phone px
+  let previewScrollPos = 0;     // float scrollTop for the preview (smooth, local)
+  let previewLastTime = null;
+  let draggingScrubber = false;
+  let dragOffset = 0;
+  let textDebounce;
+  let peer = null;
+  let conn = null;
+  let code = generateCode();
+
+  function generateCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  // ---- Rendering ----
+  function renderControls() {
+    if (document.activeElement !== textArea) {
+      textArea.value = state.text;
+    }
+    if (document.activeElement !== fontSizeSlider) {
+      fontSizeSlider.value = state.fontSize;
+    }
+    fontSizeValue.textContent = state.fontSize + 'px';
+
+    if (document.activeElement !== speedSlider) {
+      speedSlider.value = state.scrollSpeed;
+    }
+    speedValue.textContent = state.scrollSpeed;
+
+    if (document.activeElement !== fontFamilySelect) {
+      fontFamilySelect.value = state.fontFamily;
+    }
+    fontFamilySelect.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
+
+    mirrorHBtn.classList.toggle('active', state.mirroredH);
+    mirrorVBtn.classList.toggle('active', state.mirroredV);
+    playBtn.textContent = state.playState === 'playing' ? 'Pause' : 'Play';
+    playBtn.classList.toggle('active', state.playState === 'playing');
+
+    previewText.textContent = state.text;
+    previewText.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
+
+    updateMonitorScale();
+    renderHighlight();
+    updateScrubber();
+  }
+
+  // ---- To-scale preview ----
+  // The monitor's pixel size is computed directly so it always matches the
+  // phone's aspect ratio exactly (CSS aspect-ratio + max-height + width:100%
+  // can disagree and silently break the proportions).
+  function updateMonitorScale() {
+    const cs = getComputedStyle(sidePane);
+    const availableWidth = sidePane.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ratio = phoneViewport.width / phoneViewport.height; // width:height
+    let h = Math.min(280, availableWidth / ratio);
+    let w = h * ratio;
+    if (w > availableWidth) {
+      w = availableWidth;
+      h = w / ratio;
+    }
+    monitor.style.width = w + 'px';
+    monitor.style.height = h + 'px';
+    previewScale = phoneViewport.width > 0 ? w / phoneViewport.width : 1;
+    previewText.style.fontSize = (state.fontSize * previewScale) + 'px';
+  }
+
+  // Smooth local scroll animation, periodically corrected by the phone's actual position
+  function previewTick(ts) {
+    if (state.playState === 'playing' && !draggingPreview) {
+      if (previewLastTime !== null) {
+        const dt = (ts - previewLastTime) / 1000;
+        const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+        previewScrollPos = Math.max(0, Math.min(previewScrollPos + state.scrollSpeed * previewScale * dt, max));
+        previewBox.scrollTop = previewScrollPos;
+      }
+      previewLastTime = ts;
+    } else {
+      previewLastTime = null;
+    }
+    requestAnimationFrame(previewTick);
+  }
+  requestAnimationFrame(previewTick);
+
+  function correctPreviewScroll(pct) {
+    const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+    const target = pct * max;
+    const diff = target - previewScrollPos;
+    // Snap on big jumps (reset, seek, text edits), gently nudge for normal drift
+    previewScrollPos = Math.abs(diff) > 40 ? target : previewScrollPos + diff * 0.25;
+    previewBox.scrollTop = previewScrollPos;
+  }
+
+  // Wheel-based scrubbing accumulates continuously in preview pixels, so even
+  // tiny scroll deltas (trackpads) always have an effect. Converting each event
+  // through a rounded character index (like the scrubber drag does) creates a
+  // dead zone: small deltas round to the same character and never add up.
+  const WHEEL_SENSITIVITY = 0.6;
+  function scrubByPreviewPixels(deltaPx) {
+    const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+    if (max <= 0) return;
+    previewScrollPos = Math.max(0, Math.min(previewScrollPos + deltaPx, max));
+    previewBox.scrollTop = previewScrollPos;
+    scrollPct = previewScrollPos / max;
+    sendUpdate('seek', scrollPct);
+    renderHighlight();
+    updateScrubber();
+
+    const { startChar } = getHighlightRange();
+    const total = state.text.length || 1;
+    textArea.scrollTop = (startChar / total) * textArea.scrollHeight;
+    highlightLayer.scrollTop = textArea.scrollTop;
+  }
+
+  // Drag up/down on the live preview to scrub the prompter position.
+  // 1:1 with the cursor, so whatever is under the pointer stays under it.
+  let draggingPreview = false;
+  let previewDragStartY = 0;
+  let previewDragStartScroll = 0;
+
+  previewBox.addEventListener('pointerdown', e => {
+    draggingPreview = true;
+    previewDragStartY = e.clientY;
+    previewDragStartScroll = previewScrollPos;
+    previewBox.setPointerCapture(e.pointerId);
+    previewBox.classList.add('dragging');
+  });
+  previewBox.addEventListener('pointermove', e => {
+    if (!draggingPreview) return;
+    const deltaY = e.clientY - previewDragStartY;
+    const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+    previewScrollPos = Math.max(0, Math.min(previewDragStartScroll - deltaY, max));
+    previewBox.scrollTop = previewScrollPos;
+    const pct = max > 0 ? previewScrollPos / max : 0;
+    scrollPct = pct;
+    sendUpdate('seek', pct);
+    renderHighlight();
+    updateScrubber();
+  });
+  function endPreviewDrag() {
+    draggingPreview = false;
+    previewBox.classList.remove('dragging');
+  }
+  previewBox.addEventListener('pointerup', endPreviewDrag);
+  previewBox.addEventListener('pointercancel', endPreviewDrag);
+
+  // Scrolling over the live preview also scrubs the prompter position.
+  previewBox.addEventListener('wheel', e => {
+    e.preventDefault();
+    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY);
+  }, { passive: false });
+
+  // ---- Map between scroll position and the script text, using the actual
+  // rendered preview (it's a to-scale replica of the prompter) rather than
+  // an estimate. This is accurate down to which characters are on-screen.
+  function getTextNode() {
+    const node = previewText.firstChild;
+    return (node && node.nodeType === Node.TEXT_NODE && node.length) ? node : null;
+  }
+
+  function caretOffsetAt(x, y, textNode) {
+    if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(x, y);
+      if (range) {
+        if (range.startContainer === textNode) return range.startOffset;
+        if (range.startContainer === previewText) {
+          return range.startOffset === 0 ? 0 : textNode.length;
+        }
+      }
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos) {
+        if (pos.offsetNode === textNode) return pos.offset;
+        if (pos.offsetNode === previewText) return pos.offset === 0 ? 0 : textNode.length;
+      }
+    }
+    return null;
+  }
+
+  // ---- Highlight the text currently shown on the phone ----
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // The prompter wraps line by line and only shows whole words, so read the
+  // actual visible character range from the preview's rendered layout, then
+  // snap to whole words (a word is either fully visible or not at all).
+  function getHighlightRange() {
+    const text = state.text;
+    const textNode = getTextNode();
+    if (!textNode || !text.length) return { startChar: 0, endChar: 0 };
+
+    const rect = previewBox.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return { startChar: 0, endChar: 0 };
+
+    const x = rect.left + 2;
+    let startChar = caretOffsetAt(x, rect.top + 1, textNode);
+    let endChar = caretOffsetAt(x, rect.bottom - 1, textNode);
+    if (startChar === null) startChar = 0;
+    if (endChar === null) endChar = text.length;
+    if (endChar < startChar) { const tmp = startChar; startChar = endChar; endChar = tmp; }
+
+    while (startChar > 0 && /\S/.test(text[startChar - 1]) && /\S/.test(text[startChar])) startChar--;
+    while (endChar < text.length && endChar > 0 && /\S/.test(text[endChar - 1]) && /\S/.test(text[endChar])) endChar++;
+
+    return { startChar, endChar };
+  }
+
+  // Convert a target character index into a scroll fraction by measuring where
+  // that character actually renders in the to-scale preview.
+  function scrollPctFromCharIndex(charIndex) {
+    const textNode = getTextNode();
+    const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+    if (!textNode || max <= 0) return 0;
+
+    charIndex = Math.max(0, Math.min(charIndex, textNode.length));
+    const range = document.createRange();
+    if (charIndex >= textNode.length) {
+      range.setStart(textNode, Math.max(0, textNode.length - 1));
+      range.setEnd(textNode, textNode.length);
+    } else {
+      range.setStart(textNode, charIndex);
+      range.setEnd(textNode, charIndex + 1);
+    }
+    const rects = range.getClientRects();
+    if (!rects.length) return scrollPct;
+
+    const boxRect = previewBox.getBoundingClientRect();
+    const charTop = (rects[0].top - boxRect.top) + previewBox.scrollTop;
+    return Math.max(0, Math.min(1, charTop / max));
+  }
+
+
+  function renderHighlight() {
+    const text = state.text;
+    const { startChar, endChar } = getHighlightRange();
+
+    const before = escapeHtml(text.slice(0, startChar));
+    const mid = escapeHtml(text.slice(startChar, endChar));
+    const after = escapeHtml(text.slice(endChar));
+
+    highlightLayer.innerHTML = before + (mid ? '<span class="highlight-span">' + mid + '</span>' : '') + after;
+    highlightLayer.scrollTop = textArea.scrollTop;
+  }
+
+  textArea.addEventListener('scroll', () => {
+    highlightLayer.scrollTop = textArea.scrollTop;
+  });
+
+  // Scrolling over the script editor also scrubs the prompter position.
+  textArea.addEventListener('wheel', e => {
+    e.preventDefault();
+    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY);
+  }, { passive: false });
+
+  // ---- Scrubber: drag (or scroll) to jump to any point in the script ----
+  function thumbGeometry() {
+    const trackHeight = scrubberTrack.clientHeight;
+    const total = state.text.length || 1;
+    const { startChar, endChar } = getHighlightRange();
+    const startCharFrac = startChar / total;
+    const endCharFrac = endChar / total;
+    let thumbTop = startCharFrac * trackHeight;
+    let thumbHeight = Math.max(24, (endCharFrac - startCharFrac) * trackHeight);
+    if (thumbTop + thumbHeight > trackHeight) thumbTop = trackHeight - thumbHeight;
+    if (thumbTop < 0) thumbTop = 0;
+    return { trackHeight, thumbHeight, thumbTop };
+  }
+
+  function updateScrubber() {
+    const { thumbHeight, thumbTop } = thumbGeometry();
+    scrubberThumb.style.height = thumbHeight + 'px';
+    scrubberThumb.style.top = thumbTop + 'px';
+  }
+
+  function setScrollPctFromThumbTop(thumbTop) {
+    const { trackHeight, thumbHeight } = thumbGeometry();
+    thumbTop = Math.max(0, Math.min(thumbTop, trackHeight - thumbHeight));
+    const charFrac = trackHeight > 0 ? thumbTop / trackHeight : 0;
+    const total = state.text.length || 1;
+    const pct = scrollPctFromCharIndex(Math.round(charFrac * total));
+
+    scrollPct = pct;
+    sendUpdate('seek', pct);
+    correctPreviewScroll(pct);
+    renderHighlight();
+    updateScrubber();
+
+    // Bring the corresponding text into view in the editor
+    textArea.scrollTop = charFrac * textArea.scrollHeight;
+    highlightLayer.scrollTop = textArea.scrollTop;
+  }
+
+  scrubberThumb.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    draggingScrubber = true;
+    const { thumbTop } = thumbGeometry();
+    dragOffset = e.clientY - scrubberTrack.getBoundingClientRect().top - thumbTop;
+    scrubberThumb.setPointerCapture(e.pointerId);
+  });
+  scrubberThumb.addEventListener('pointermove', e => {
+    if (!draggingScrubber) return;
+    const top = e.clientY - scrubberTrack.getBoundingClientRect().top - dragOffset;
+    setScrollPctFromThumbTop(top);
+  });
+  scrubberThumb.addEventListener('pointerup', () => { draggingScrubber = false; });
+  scrubberThumb.addEventListener('pointercancel', () => { draggingScrubber = false; });
+
+  scrubberTrack.addEventListener('pointerdown', e => {
+    if (e.target === scrubberThumb) return;
+    const { thumbHeight } = thumbGeometry();
+    const top = e.clientY - scrubberTrack.getBoundingClientRect().top - thumbHeight / 2;
+    setScrollPctFromThumbTop(top);
+  });
+
+  // Mouse wheel over the scrubber: same continuous scrubbing
+  scrubberTrack.addEventListener('wheel', e => {
+    e.preventDefault();
+    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY);
+  }, { passive: false });
+
+  // ---- Outgoing updates ----
+  function sendUpdate(field, value) {
+    if (conn && conn.open) conn.send({ type: 'update', field, value });
+  }
+
+  playBtn.onclick = () => sendUpdate('playState', state.playState === 'playing' ? 'paused' : 'playing');
+  resetBtn.onclick = () => {
+    sendUpdate('reset', true);
+    scrollPct = 0;
+    previewScrollPos = 0;
+    previewBox.scrollTop = 0;
+    renderHighlight();
+    updateScrubber();
+  };
+  mirrorHBtn.onclick = () => sendUpdate('mirroredH', !state.mirroredH);
+  mirrorVBtn.onclick = () => sendUpdate('mirroredV', !state.mirroredV);
+  fontFamilySelect.onchange = () => sendUpdate('fontFamily', fontFamilySelect.value);
+
+  exportBtn.onclick = () => {
+    const blob = new Blob([state.text], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'script.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  copyBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(state.text);
+      const original = copyBtn.textContent;
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => { copyBtn.textContent = original; }, 1200);
+    } catch (e) {
+      copyBtn.textContent = 'Failed';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200);
+    }
+  };
+
+  function stepFont(delta) {
+    const val = Math.max(20, Math.min(200, parseInt(fontSizeSlider.value, 10) + delta));
+    fontSizeSlider.value = val;
+    fontSizeValue.textContent = val + 'px';
+    sendUpdate('fontSize', val);
+  }
+  function stepSpeed(delta) {
+    const val = Math.max(0, Math.min(400, parseInt(speedSlider.value, 10) + delta));
+    speedSlider.value = val;
+    speedValue.textContent = val;
+    sendUpdate('scrollSpeed', val);
+  }
+
+  fontIncBtn.onclick = () => stepFont(2);
+  fontDecBtn.onclick = () => stepFont(-2);
+  speedIncBtn.onclick = () => stepSpeed(5);
+  speedDecBtn.onclick = () => stepSpeed(-5);
+
+  fontSizeSlider.oninput = () => {
+    fontSizeValue.textContent = fontSizeSlider.value + 'px';
+    sendUpdate('fontSize', parseInt(fontSizeSlider.value, 10));
+  };
+  speedSlider.oninput = () => {
+    speedValue.textContent = speedSlider.value;
+    sendUpdate('scrollSpeed', parseInt(speedSlider.value, 10));
+  };
+
+  textArea.oninput = () => {
+    clearTimeout(textDebounce);
+    const value = textArea.value;
+    textDebounce = setTimeout(() => sendUpdate('text', value), 250);
+    renderHighlight();
+  };
+
+  // Spacebar toggles play/pause, unless the script editor has focus
+  document.addEventListener('keydown', e => {
+    if ((e.code === 'Space' || e.key === ' ') && document.activeElement !== textArea) {
+      e.preventDefault();
+      sendUpdate('playState', state.playState === 'playing' ? 'paused' : 'playing');
+    }
+  });
+
+  // ---- Incoming data ----
+  function handleData(msg) {
+    if (msg.type === 'state') {
+      state = msg.data;
+      renderControls();
+    } else if (msg.type === 'scroll') {
+      scrollPct = msg.position;
+      if (!draggingPreview) correctPreviewScroll(scrollPct);
+      renderHighlight();
+      updateScrubber();
+    } else if (msg.type === 'viewport') {
+      phoneViewport = { width: msg.width, height: msg.height };
+      updateMonitorScale();
+    }
+  }
+
+  window.addEventListener('resize', () => {
+    updateMonitorScale();
+    updateScrubber();
+  });
+
+  // ---- Host the session: generate a code and wait for the prompter ----
+  function startHost() {
+    peer = new Peer('tp-' + code);
+
+    peer.on('open', () => {
+      hostCode.textContent = code;
+    });
+
+    peer.on('connection', c => {
+      conn = c;
+      conn.on('open', () => {
+        connectionPanel.classList.add('hidden');
+        mainPanel.classList.add('visible');
+        updateMonitorScale();
+        updateScrubber();
+      });
+      conn.on('data', handleData);
+      conn.on('close', () => {
+        conn = null;
+        mainPanel.classList.remove('visible');
+        connectionPanel.classList.remove('hidden');
+        connectionStatus.textContent = 'Prompter disconnected. Waiting for it to reconnect...';
+      });
+    });
+
+    peer.on('error', err => {
+      if (err.type === 'unavailable-id') {
+        code = generateCode();
+        peer.destroy();
+        startHost();
+      } else {
+        connectionStatus.textContent = 'Error: ' + err.type;
+      }
+    });
+  }
+  startHost();
+
+  newCodeBtn.onclick = () => {
+    if (peer) peer.destroy();
+    conn = null;
+    code = generateCode();
+    connectionStatus.textContent = 'Waiting for the prompter to connect...';
+    startHost();
+  };
+</script>
+</body>
+</html>
