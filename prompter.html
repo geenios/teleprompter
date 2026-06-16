@@ -554,6 +554,24 @@
   };
 
   // ---- Auto-reconnect ----
+  // ICE config: STUN + TURN relay for cross-network (phone on mobile data vs desktop on WiFi)
+  const ICE_CONFIG = {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        { urls: 'turn:openrelay.metered.ca:80',               username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443',              username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:3478',             username: 'openrelayproject', credential: 'openrelayproject' },
+      ],
+      iceTransportPolicy: 'all',
+    }
+  };
   let reconnectTimer = null;
   function scheduleReconnect(code) {
     if (!code || !/^\d{6}$/.test(code)) return;
@@ -607,7 +625,7 @@
     connectBtn.disabled = true;
     setStatus('CONNECTING', false);
 
-    if (!peer || peer.destroyed) peer = new Peer();
+    if (!peer || peer.destroyed) peer = new Peer(ICE_CONFIG);
 
     const ERROR_MSG = {
       'peer-unavailable': 'Code not found. Make sure the control page is open and the code is correct.',

@@ -821,9 +821,31 @@ function acceptConnection(c){
 }
 function ensureListening(){if(peer&&!peer.destroyed){peer.off('connection');peer.on('connection',acceptConnection);}}
 setInterval(ensureListening,3000);
+// ICE config: multiple STUN + TURN relay servers for cross-network connectivity.
+// TURN servers are needed when phone (mobile data) and desktop (WiFi) are on
+// different networks and can't reach each other directly.
+const ICE_CONFIG = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      // Open Relay TURN servers (public, no account required)
+      { urls: 'turn:openrelay.metered.ca:80',              username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443',             username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:3478',            username: 'openrelayproject', credential: 'openrelayproject' },
+    ],
+    iceTransportPolicy: 'all',
+  }
+};
+
 function startHost(){
   setPeerStatus(false);
-  peer=new Peer('tp-'+peerCode);
+  peer=new Peer('tp-'+peerCode, ICE_CONFIG);
   peer.on('open',()=>{applyCode(peerCode);setPeerStatus(true);});
   peer.on('connection',acceptConnection);
   peer.on('disconnected',()=>{
