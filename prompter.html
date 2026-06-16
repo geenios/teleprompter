@@ -554,24 +554,6 @@
   };
 
   // ---- Auto-reconnect ----
-  // ICE config: STUN + TURN relay for cross-network (phone on mobile data vs desktop on WiFi)
-  const ICE_CONFIG = {
-    config: {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' },
-        { urls: 'turn:openrelay.metered.ca:80',               username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443',              username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:3478',             username: 'openrelayproject', credential: 'openrelayproject' },
-      ],
-      iceTransportPolicy: 'all',
-    }
-  };
   let reconnectTimer = null;
   function scheduleReconnect(code) {
     if (!code || !/^\d{6}$/.test(code)) return;
@@ -625,28 +607,11 @@
     connectBtn.disabled = true;
     setStatus('CONNECTING', false);
 
-    if (!peer || peer.destroyed) peer = new Peer(ICE_CONFIG);
-
-    const ERROR_MSG = {
-      'peer-unavailable': 'Code not found. Make sure the control page is open and the code is correct.',
-      'network': 'Network error. Check your internet connection.',
-      'server-error': 'Signaling server error. Try again in a moment.',
-      'socket-error': 'WebSocket error. Try refreshing the page.',
-      'socket-closed': 'Connection to server lost. Refreshing…',
-    };
-    const onError = (err) => {
-      connectBtn.disabled = false;
-      connectStatus.textContent = ERROR_MSG[err.type] || ('Error (' + err.type + '). Check the code and try again.');
-      setStatus('OFFLINE', false);
-      connectOverlay.classList.remove('hidden');
-    };
+    if (!peer || peer.destroyed) peer = new Peer();
 
     const tryConnect = () => {
       conn = peer.connect('tp-' + code, { reliable: true });
-      // peer-unavailable fires on peer, not conn — listen once
-      peer.once('error', onError);
       conn.on('open', () => {
-        peer.off('error', onError); // succeeded — remove the error listener
         connectBtn.disabled = false;
         setStatus('CONNECTED', true);
         connectOverlay.classList.add('hidden');
@@ -659,13 +624,23 @@
         setStatus('OFFLINE', false);
         scheduleReconnect(codeInput.value.trim());
       });
-      conn.on('error', onError);
+      conn.on('error', err => {
+        connectBtn.disabled = false;
+        connectStatus.textContent = 'Connection error (' + (err.type||'unknown') + '). Check the code and try again.';
+        setStatus('OFFLINE', false);
+        connectOverlay.classList.remove('hidden');
+      });
     };
 
     if (peer.open) { tryConnect(); }
     else {
-      peer.once('open', tryConnect);
-      peer.once('error', onError);
+      peer.on('open', tryConnect);
+      peer.on('error', err => {
+        connectBtn.disabled = false;
+        connectStatus.textContent = 'Error: ' + err.type + '. Check the code and try again.';
+        setStatus('OFFLINE', false);
+        connectOverlay.classList.remove('hidden');
+      });
     }
   };
 
