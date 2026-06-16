@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, orientation=landscape">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.json">
 <title>Teleprompter</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -137,7 +138,22 @@
   }
   #controls.hidden ~ #toggleBar { bottom: 8px; }
 
-  /* ---- Settings overlay (shortcuts) ---- */
+  /* ---- iOS "Add to Home Screen" prompt ---- */
+  #iosPrompt {
+    position: absolute; bottom: calc(env(safe-area-inset-bottom) + 70px); left: 12px; right: 12px;
+    z-index: 50; background: #1a1a1a; border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px;
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  #iosPrompt.hidden { display: none; }
+  #iosPrompt .icon { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+  #iosPrompt .text { flex: 1; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  #iosPrompt .text strong { color: var(--text); font-weight: 600; }
+  #iosPrompt .close-x {
+    background: none; border: none; color: var(--muted); font-size: 18px;
+    cursor: pointer; padding: 0 0 0 8px; line-height: 1; flex-shrink: 0;
+  }
+
   .shortcut-table { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 10px; align-items: center; }
   .sc-label { font-size: 13px; color: var(--text); }
   .sc-key {
@@ -176,6 +192,15 @@
       </div>
     </div>
 
+    <!-- iOS "Add to Home Screen" prompt -->
+    <div id="iosPrompt" class="hidden">
+      <span class="icon">⬆</span>
+      <div class="text">
+        <strong>For full-screen:</strong> tap <strong>Share</strong> then <strong>Add to Home Screen</strong>, then open from there.
+      </div>
+      <button class="close-x" id="dismissIosPrompt">×</button>
+    </div>
+
     <!-- Controls bar -->
     <div id="controls">
       <div class="status-dot-wrap">
@@ -202,6 +227,36 @@
   </div>
 
 <script>
+  const iosPrompt = document.getElementById('iosPrompt');
+  const dismissIosPrompt = document.getElementById('dismissIosPrompt');
+
+  // ---- Full-screen handling ----
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isAndroid = /Android/.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone === true ||
+                       window.matchMedia('(display-mode: fullscreen)').matches ||
+                       window.matchMedia('(display-mode: standalone)').matches;
+
+  if (isIOS && !isStandalone) {
+    // Show Add to Home Screen prompt if not already in standalone mode
+    const dismissed = localStorage.getItem('tp_ios_prompt_dismissed');
+    if (!dismissed) iosPrompt.classList.remove('hidden');
+  }
+  dismissIosPrompt.onclick = () => {
+    iosPrompt.classList.add('hidden');
+    localStorage.setItem('tp_ios_prompt_dismissed', '1');
+  };
+
+  if (isAndroid || (!isIOS && !isStandalone)) {
+    // Request fullscreen on first tap (works on Android Chrome and desktop)
+    document.addEventListener('pointerdown', function requestFS() {
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      document.removeEventListener('pointerdown', requestFS);
+    }, { once: true });
+  }
+
   // ---- Elements ----
   const scrollArea   = document.getElementById('scrollArea');
   const textContent  = document.getElementById('textContent');

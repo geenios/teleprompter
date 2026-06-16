@@ -476,9 +476,44 @@
   dismissRestoreBtn.onclick = () => restoreToast.classList.remove('visible');
 
   // ---- Sentence navigation ----
-  function jumpLines(direction) {
-    const jumpPx = 5 * state.fontSize * 1.5;
-    scrubByPreviewPixels(direction * jumpPx * previewScale);
+  // ---- Sentence navigation (no counter display, just the logic) ----
+  let sentenceStarts = [0];
+  let currentSentenceIdx = 0;
+
+  function buildSentenceStarts(text) {
+    const starts = [0];
+    const re = /[.!?]\s+|\n{2,}/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const idx = m.index + m[0].length;
+      if (idx < text.length && /\S/.test(text[idx])) starts.push(idx);
+    }
+    return starts;
+  }
+
+  function getSentenceIdxFromHighlight() {
+    const { startChar } = getHighlightRange();
+    let best = 0;
+    for (let i = 0; i < sentenceStarts.length; i++) {
+      if (sentenceStarts[i] <= startChar) best = i; else break;
+    }
+    return best;
+  }
+
+  function jumpToSentence(idx) {
+    if (!sentenceStarts.length) return;
+    idx = Math.max(0, Math.min(idx, sentenceStarts.length - 1));
+    currentSentenceIdx = idx;
+    const charIdx = sentenceStarts[idx];
+    const pct = scrollPctFromCharIndex(charIdx);
+    scrollPct = pct;
+    sendUpdate('seek', pct);
+    correctPreviewScroll(pct);
+    renderHighlight();
+    updateScrubber();
+    const total = state.text.length || 1;
+    textArea.scrollTop = (charIdx / total) * textArea.scrollHeight;
+    highlightLayer.scrollTop = textArea.scrollTop;
   }
 
   // ---- Rendering ----
@@ -753,6 +788,7 @@
     const value = textArea.value;
     textDebounce = setTimeout(() => sendUpdate('text', value), 250);
     renderHighlight();
+    sentenceStarts = buildSentenceStarts(value);
     saveStatus.textContent = 'Saving...';
     clearTimeout(autoSaveDebounce);
     autoSaveDebounce = setTimeout(() => autosave(value), AUTOSAVE_DELAY);
@@ -778,10 +814,11 @@
       textArea.focus(); document.execCommand('redo'); textArea.blur(); return;
     }
 
-    // Arrow up/down: jump 5 lines when editor not focused
+    // Arrow up/down: jump to prev/next sentence start when editor not focused
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !inEditor) {
       e.preventDefault();
-      jumpLines(e.key === 'ArrowDown' ? 1 : -1);
+      currentSentenceIdx = getSentenceIdxFromHighlight();
+      jumpToSentence(e.key === 'ArrowDown' ? currentSentenceIdx + 1 : currentSentenceIdx - 1);
     }
   });
 
@@ -806,7 +843,8 @@
   function handleData(msg) {
     if (msg.type === 'state') {
       state = msg.data;
-        renderControls();
+      sentenceStarts = buildSentenceStarts(state.text);
+      renderControls();
     } else if (msg.type === 'scroll') {
       scrollPct = msg.position;
       if (!draggingPreview) correctPreviewScroll(scrollPct);
