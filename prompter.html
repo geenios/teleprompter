@@ -607,11 +607,28 @@
     connectBtn.disabled = true;
     setStatus('CONNECTING', false);
 
-    if (!peer) peer = new Peer();
+    if (!peer || peer.destroyed) peer = new Peer();
+
+    const ERROR_MSG = {
+      'peer-unavailable': 'Code not found. Make sure the control page is open and the code is correct.',
+      'network': 'Network error. Check your internet connection.',
+      'server-error': 'Signaling server error. Try again in a moment.',
+      'socket-error': 'WebSocket error. Try refreshing the page.',
+      'socket-closed': 'Connection to server lost. Refreshing…',
+    };
+    const onError = (err) => {
+      connectBtn.disabled = false;
+      connectStatus.textContent = ERROR_MSG[err.type] || ('Error (' + err.type + '). Check the code and try again.');
+      setStatus('OFFLINE', false);
+      connectOverlay.classList.remove('hidden');
+    };
 
     const tryConnect = () => {
       conn = peer.connect('tp-' + code, { reliable: true });
+      // peer-unavailable fires on peer, not conn — listen once
+      peer.once('error', onError);
       conn.on('open', () => {
+        peer.off('error', onError); // succeeded — remove the error listener
         connectBtn.disabled = false;
         setStatus('CONNECTED', true);
         connectOverlay.classList.add('hidden');
@@ -622,25 +639,15 @@
       conn.on('close', () => {
         conn = null;
         setStatus('OFFLINE', false);
-        // Auto-reconnect every 3s without user interaction
         scheduleReconnect(codeInput.value.trim());
       });
-      conn.on('error', () => {
-        connectBtn.disabled = false;
-        connectStatus.textContent = 'Connection error. Check the code and try again.';
-        setStatus('OFFLINE', false);
-        connectOverlay.classList.remove('hidden');
-      });
+      conn.on('error', onError);
     };
 
     if (peer.open) { tryConnect(); }
     else {
-      peer.on('open', tryConnect);
-      peer.on('error', err => {
-        connectBtn.disabled = false;
-        connectStatus.textContent = 'Error: ' + err.type;
-        setStatus('OFFLINE', false);
-      });
+      peer.once('open', tryConnect);
+      peer.once('error', onError);
     }
   };
 

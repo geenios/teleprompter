@@ -266,6 +266,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
     <hr class="divider">
     <div id="statusBar">
       <div id="sideStatus">DISCONNECTED</div>
+      <span id="peerStatus" title="Signaling server status" style="font-size:9px;color:var(--muted);">●</span>
       <span id="persistentCode" title="Click to show QR">------</span>
     </div>
   </div>
@@ -794,13 +795,16 @@ function enterMainPanel(){
   updateMonitorScale();updateScrubber();checkRestore();
 }
 function applyCode(c){peerCode=c;bannerCode.textContent=c;persistentCode.textContent=c;}
+function setPeerStatus(ready){
+  const dot=document.getElementById('peerStatus');
+  if(dot){dot.style.color=ready?'var(--accent)':'var(--muted)';dot.title=ready?'Signaling server: connected':'Signaling server: connecting…';}
+}
 
 newProjectBtn.onclick=()=>{session=defaultSession(true);enterMainPanel();};
 loadProjectBtn.onclick=()=>fileInput.click();
 fileInput.onchange=e=>{
   if(!e.target.files[0])return;
   doLoadFile(e.target.files[0]);
-  // If opening panel is still visible, enter the main panel after loading
   if(!openingPanel.classList.contains('hidden'))enterMainPanel();
 };
 
@@ -818,10 +822,25 @@ function acceptConnection(c){
 function ensureListening(){if(peer&&!peer.destroyed){peer.off('connection');peer.on('connection',acceptConnection);}}
 setInterval(ensureListening,3000);
 function startHost(){
+  setPeerStatus(false);
   peer=new Peer('tp-'+peerCode);
-  peer.on('open',()=>applyCode(peerCode));
+  peer.on('open',()=>{applyCode(peerCode);setPeerStatus(true);});
   peer.on('connection',acceptConnection);
-  peer.on('error',err=>{if(err.type==='unavailable-id'){peerCode=generateCode();peer.destroy();startHost();}});
+  peer.on('disconnected',()=>{
+    setPeerStatus(false);
+    try{peer.reconnect();}catch(e){setTimeout(()=>{try{peer.reconnect();}catch(e2){}},2000);}
+  });
+  peer.on('error',err=>{
+    setPeerStatus(false);
+    if(err.type==='unavailable-id'){
+      peerCode=generateCode();
+      persistentCode.textContent=peerCode;
+      peer.destroy();startHost();
+    }else{
+      console.warn('PeerJS error:',err.type,err.message||'');
+      setTimeout(()=>{try{peer.destroy();}catch(e){}startHost();},3000);
+    }
+  });
 }
 startHost();
 </script>
