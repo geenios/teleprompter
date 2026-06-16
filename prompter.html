@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
 <title>Teleprompter</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -10,246 +14,433 @@
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #000000;
-    --text-color: #ffffff;
+    --bg: #000;
+    --text: #ffffff;
     --accent: #ffc800;
-    --panel-bg: rgba(18,18,18,0.94);
+    --panel: rgba(12,12,12,0.96);
     --border: #2a2a2a;
     --muted: #8a8a8a;
+    --radius: 10px;
   }
-  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
-  html, body {
-    height:100%; width:100%; overflow:hidden; background:var(--bg);
-    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-    user-select:none; -webkit-user-select:none;
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  html {
+    height: 100%;
+    /* fill including notch / home indicator */
+    background: var(--bg);
+  }
+  body {
+    position: fixed; inset: 0;
+    /* push content away from hardware edges */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    background: var(--bg);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    user-select: none; -webkit-user-select: none;
+    overflow: hidden;
   }
 
-  #prompter { position:relative; height:100vh; width:100vw; overflow:hidden; background:var(--bg); }
+  /* ---- Main prompter area ---- */
+  #prompter { position: absolute; inset: 0; }
 
   #scrollArea {
-    position:absolute; inset:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
-    scrollbar-width:none;
+    position: absolute; inset: 0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
-  #scrollArea::-webkit-scrollbar { display:none; }
+  #scrollArea::-webkit-scrollbar { display: none; }
 
   #textContent {
-    color: var(--text-color);
+    color: var(--text); line-height: 1.5;
     padding: 60vh 6vw 60vh 6vw;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    white-space: pre-wrap; word-wrap: break-word;
     transform-origin: center;
   }
 
-  /* Connect overlay */
-  #connectOverlay {
-    position:absolute; inset:0; z-index:30;
-    display:flex; align-items:center; justify-content:center;
-    background: rgba(0,0,0,0.85); padding:24px;
-    transition: opacity 0.2s ease, visibility 0.2s ease;
+  /* ---- Overlay base ---- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 40;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.88); padding: 24px;
+    transition: opacity 0.2s, visibility 0.2s;
   }
-  #connectOverlay.hidden { opacity:0; visibility:hidden; pointer-events:none; }
-  .connect-card {
-    background: var(--panel-bg); border:1px solid var(--border); border-radius:12px;
-    padding: 28px 24px; width:100%; max-width:340px; text-align:center;
-    color: var(--text-color); display:flex; flex-direction:column; gap:14px;
+  .overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+  /* ---- Card ---- */
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 24px 20px; width: 100%; max-width: 340px;
+    display: flex; flex-direction: column; gap: 14px;
   }
-  .connect-card h2 { font-size:16px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); }
-  .connect-card p { color: var(--muted); font-size:13px; line-height:1.5; }
+  .card h2 { font-size: 15px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted); }
+  .card p { font-size: 13px; color: var(--muted); line-height: 1.55; }
+
+  /* ---- Code input (connect screen) ---- */
   #codeInput {
-    font-family: "SF Mono", "Courier New", monospace; font-size: 32px; letter-spacing: 0.25em;
-    text-align:center; background:#000; border:2px solid var(--border); color: var(--accent);
-    border-radius:8px; padding: 12px; outline:none; width:100%;
+    font-family: "SF Mono", "Courier New", monospace;
+    font-size: 34px; letter-spacing: 0.22em; text-align: center;
+    background: #000; border: 2px solid var(--border); color: var(--accent);
+    border-radius: 8px; padding: 12px; outline: none; width: 100%;
   }
   #codeInput:focus { border-color: var(--accent); }
-  .overlay-btn {
-    background: var(--accent); color:#000; border:none; padding:12px 20px;
-    border-radius:8px; font-size:15px; font-weight:600;
-  }
-  .overlay-btn.secondary { background:none; border:1px solid var(--border); color: var(--text-color); font-weight:400; }
-  #connectStatus { color: var(--muted); font-size:13px; min-height:16px; }
-  .hidden { display:none; }
 
-  /* Controls */
+  .btn-primary {
+    background: var(--accent); color: #000; border: none;
+    padding: 13px 20px; border-radius: 8px; font-size: 15px; font-weight: 700;
+  }
+  .btn-secondary {
+    background: none; border: 1px solid var(--border); color: var(--text);
+    padding: 11px 20px; border-radius: 8px; font-size: 14px;
+  }
+  #connectStatus { font-size: 13px; color: var(--muted); min-height: 16px; text-align: center; }
+
+  /* ---- Controls bar ---- */
   #controls {
-    position:absolute; bottom:0; left:0; width:100%; z-index:10;
-    background: var(--panel-bg); border-top: 1px solid var(--border);
-    display:flex; align-items:center; gap: 8px; padding: 10px 12px;
-    flex-wrap: wrap; justify-content:center;
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 20;
+    background: var(--panel); border-top: 1px solid var(--border);
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;
     transform: translateY(0); transition: transform 0.25s ease;
   }
-  #controls.collapsed { transform: translateY(100%); }
+  #controls.hidden { transform: translateY(110%); }
 
-  .ctrl-btn {
-    background: #1a1a1a; color: var(--text-color); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 14px; font-size: 15px; min-width:44px; min-height:44px;
-    display:flex; align-items:center; justify-content:center; gap:4px;
+  .cb { /* control button */
+    background: #1a1a1a; color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; min-width: 44px; min-height: 44px;
+    padding: 8px 12px; font-size: 14px;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
   }
-  .ctrl-btn.active { border-color: var(--accent); color: var(--accent); }
-  .ctrl-group { display:flex; align-items:center; gap:4px; }
-  .ctrl-value {
-    font-family: "SF Mono", "Courier New", monospace; color: var(--muted); font-size: 13px;
-    min-width: 38px; text-align:center;
-  }
-
-  #statusBadge {
-    display:flex; align-items:center; gap:6px; padding: 10px 12px; border-radius:8px;
-    border: 1px solid var(--border); color: var(--muted); font-size: 13px;
+  .cb.active { border-color: var(--accent); color: var(--accent); }
+  .cb-group { display: flex; align-items: center; gap: 4px; }
+  .cb-val {
     font-family: "SF Mono", "Courier New", monospace;
+    font-size: 12px; color: var(--muted); min-width: 34px; text-align: center;
   }
-  #statusDot { width:8px; height:8px; border-radius:50%; background:#555; flex-shrink:0; }
-  #statusDot.connected { background: var(--accent); }
 
-  #toggleControls {
-    position:absolute; bottom:14px; right:14px; z-index:11;
-    background: var(--panel-bg); border:1px solid var(--border); color:var(--text-color);
-    border-radius:50%; width:44px; height:44px; font-size:18px;
+  .status-dot-wrap {
+    display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 8px; font-size: 12px;
+    font-family: "SF Mono","Courier New",monospace; color: var(--muted);
   }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #555; flex-shrink: 0; }
+  .status-dot.on { background: var(--accent); }
+
+  /* ---- Toggle bar button ---- */
+  #toggleBar {
+    position: absolute; bottom: calc(8px + env(safe-area-inset-bottom)); right: 14px; z-index: 21;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    width: 40px; height: 40px; border-radius: 50%; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #controls.hidden ~ #toggleBar { bottom: 8px; }
+
+  /* ---- Settings overlay (shortcuts) ---- */
+  .shortcut-table { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 10px; align-items: center; }
+  .sc-label { font-size: 13px; color: var(--text); }
+  .sc-key {
+    font-family: "SF Mono","Courier New",monospace; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px;
+    color: var(--muted); background: #0a0a0a; cursor: pointer; min-width: 36px; text-align: center;
+  }
+  .sc-key.listening { border-color: var(--accent); color: var(--accent); }
+  .sc-key.empty { color: #333; }
+  .settings-note { font-size: 11px; color: var(--muted); line-height: 1.5; }
 </style>
 </head>
 <body>
   <div id="prompter">
-    <div id="scrollArea">
-      <div id="textContent"></div>
-    </div>
+    <div id="scrollArea"><div id="textContent"></div></div>
 
-    <div id="connectOverlay">
-      <div class="connect-card">
-        <div id="connectFormSection">
-          <h2>Connect to control</h2>
-          <p>Enter the code shown on the control page to link this prompter for live editing and remote settings.</p>
-          <input type="text" id="codeInput" maxlength="6" inputmode="numeric" placeholder="------">
-          <button class="overlay-btn" id="connectBtn">Connect</button>
-          <div id="connectStatus"></div>
-        </div>
-        <div id="connectedSection" class="hidden">
-          <h2>Connected</h2>
-          <p>This prompter is linked to the control page.</p>
-          <button class="overlay-btn" id="disconnectBtn">Disconnect</button>
-        </div>
-        <button class="overlay-btn secondary" id="closeOverlayBtn">Use offline</button>
+    <!-- Mandatory connect overlay -->
+    <div id="connectOverlay" class="overlay">
+      <div class="card">
+        <h2>Connect to control</h2>
+        <p>Enter the 6-digit code shown on the control page to start. Add this page to your home screen for true full-screen.</p>
+        <input type="text" id="codeInput" maxlength="6" inputmode="numeric" placeholder="------">
+        <button class="btn-primary" id="connectBtn">Connect</button>
+        <div id="connectStatus"></div>
       </div>
     </div>
 
+    <!-- Settings overlay (shortcuts) -->
+    <div id="settingsOverlay" class="overlay hidden">
+      <div class="card" style="max-height:90vh;overflow-y:auto;">
+        <h2>Remote shortcuts</h2>
+        <p>Tap a key badge and then press a key to reassign. These apply to Bluetooth remotes connected to this device.</p>
+        <div class="shortcut-table" id="shortcutTable"></div>
+        <p class="settings-note">Press ESC or tap outside to save and close.</p>
+        <button class="btn-secondary" id="closeSettings">Done</button>
+      </div>
+    </div>
+
+    <!-- Controls bar -->
     <div id="controls">
-      <div id="statusBadge"><span id="statusDot"></span><span id="statusText">OFFLINE</span></div>
-      <button class="ctrl-btn" id="playBtn">Play</button>
-      <button class="ctrl-btn" id="resetBtn">Restart</button>
-      <button class="ctrl-btn" id="mirrorHBtn" title="Mirror horizontal">↔</button>
-      <button class="ctrl-btn" id="mirrorVBtn" title="Mirror vertical">↕</button>
-      <div class="ctrl-group">
-        <button class="ctrl-btn" id="fontDecBtn">A-</button>
-        <span class="ctrl-value" id="fontSizeDisplay">48px</span>
-        <button class="ctrl-btn" id="fontIncBtn">A+</button>
+      <div class="status-dot-wrap">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">OFFLINE</span>
       </div>
-      <div class="ctrl-group">
-        <button class="ctrl-btn" id="speedDecBtn">Sp-</button>
-        <span class="ctrl-value" id="speedDisplay">50</span>
-        <button class="ctrl-btn" id="speedIncBtn">Sp+</button>
+      <button class="cb" id="playBtn">Play</button>
+      <button class="cb" id="resetBtn">↑ Top</button>
+      <button class="cb" id="mirrorHBtn" title="Flip H">↔</button>
+      <button class="cb" id="mirrorVBtn" title="Flip V">↕</button>
+      <div class="cb-group">
+        <button class="cb" id="fontDecBtn">A−</button>
+        <span class="cb-val" id="fontSizeVal">48</span>
+        <button class="cb" id="fontIncBtn">A+</button>
       </div>
+      <div class="cb-group">
+        <button class="cb" id="speedDecBtn">S−</button>
+        <span class="cb-val" id="speedVal">50</span>
+        <button class="cb" id="speedIncBtn">S+</button>
+      </div>
+      <button class="cb" id="settingsBtn">⚙</button>
     </div>
-    <button id="toggleControls">▾</button>
+    <button id="toggleBar">▾</button>
   </div>
 
 <script>
-  const scrollArea = document.getElementById('scrollArea');
-  const textContent = document.getElementById('textContent');
+  // ---- Elements ----
+  const scrollArea   = document.getElementById('scrollArea');
+  const textContent  = document.getElementById('textContent');
   const connectOverlay = document.getElementById('connectOverlay');
-  const connectFormSection = document.getElementById('connectFormSection');
-  const connectedSection = document.getElementById('connectedSection');
-  const codeInput = document.getElementById('codeInput');
-  const connectBtn = document.getElementById('connectBtn');
+  const codeInput    = document.getElementById('codeInput');
+  const connectBtn   = document.getElementById('connectBtn');
   const connectStatus = document.getElementById('connectStatus');
-  const disconnectBtn = document.getElementById('disconnectBtn');
-  const closeOverlayBtn = document.getElementById('closeOverlayBtn');
-  const controls = document.getElementById('controls');
-  const toggleControlsBtn = document.getElementById('toggleControls');
-  const statusDot = document.getElementById('statusDot');
-  const statusText = document.getElementById('statusText');
-  const statusBadge = document.getElementById('statusBadge');
-  const playBtn = document.getElementById('playBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const mirrorHBtn = document.getElementById('mirrorHBtn');
-  const mirrorVBtn = document.getElementById('mirrorVBtn');
-  const fontDecBtn = document.getElementById('fontDecBtn');
-  const fontIncBtn = document.getElementById('fontIncBtn');
-  const fontSizeDisplay = document.getElementById('fontSizeDisplay');
-  const speedDecBtn = document.getElementById('speedDecBtn');
-  const speedIncBtn = document.getElementById('speedIncBtn');
-  const speedDisplay = document.getElementById('speedDisplay');
+  const settingsOverlay = document.getElementById('settingsOverlay');
+  const shortcutTable = document.getElementById('shortcutTable');
+  const closeSettings = document.getElementById('closeSettings');
+  const controls     = document.getElementById('controls');
+  const toggleBar    = document.getElementById('toggleBar');
+  const statusDot    = document.getElementById('statusDot');
+  const statusText   = document.getElementById('statusText');
+  const playBtn      = document.getElementById('playBtn');
+  const resetBtn     = document.getElementById('resetBtn');
+  const mirrorHBtn   = document.getElementById('mirrorHBtn');
+  const mirrorVBtn   = document.getElementById('mirrorVBtn');
+  const fontDecBtn   = document.getElementById('fontDecBtn');
+  const fontIncBtn   = document.getElementById('fontIncBtn');
+  const fontSizeVal  = document.getElementById('fontSizeVal');
+  const speedDecBtn  = document.getElementById('speedDecBtn');
+  const speedIncBtn  = document.getElementById('speedIncBtn');
+  const speedVal     = document.getElementById('speedVal');
+  const settingsBtn  = document.getElementById('settingsBtn');
 
-  // Font choices well suited to on-screen reading at speed
+  // ---- Fonts ----
   const FONTS = {
-    verdana:   { label: 'Verdana',               stack: 'Verdana, Geneva, sans-serif' },
-    opensans:  { label: 'Open Sans',             stack: "'Open Sans', sans-serif" },
-    atkinson:  { label: 'Atkinson Hyperlegible', stack: "'Atkinson Hyperlegible', sans-serif" },
-    mono:      { label: 'Monospace',             stack: "'Courier New', monospace" }
+    verdana:  { stack: 'Verdana, Geneva, sans-serif' },
+    opensans: { stack: "'Open Sans', sans-serif" },
+    atkinson: { stack: "'Atkinson Hyperlegible', sans-serif" },
+    mono:     { stack: "'Courier New', monospace" }
   };
 
+  // ---- State ----
   let state = {
-    text: "Welcome to your teleprompter.\n\nTo connect, open the control page on your computer and enter the six-digit code shown there into this app.\n\nOnce connected, you can edit this script live from the control page, and adjust every setting from there too: font size, scroll speed, and mirroring.\n\nUse the buttons below to play or pause scrolling, restart from the top, and mirror the image horizontally or vertically.\n\nOn the control page, drag the scrubber bar on the right of the script, or drag the live preview itself, to jump to any part of the script. You can also export this script as a markdown file from there.\n\nTap Play to begin scrolling.",
-    fontSize: 48,
-    fontFamily: 'opensans',
-    scrollSpeed: 50, // pixels per second
-    mirroredH: false,
-    mirroredV: false,
-    playState: 'paused'
+    text: '', fontSize: 48, fontFamily: 'opensans',
+    scrollSpeed: 50, mirroredH: false, mirroredV: false, playState: 'paused'
   };
-
   let conn = null;
   let peer = null;
 
-  // ---- Rendering ----
+  // ---- Keyboard shortcuts (stored per-device in localStorage) ----
+  const SHORTCUT_ACTIONS = [
+    { id: 'playPause',  label: 'Play / Pause',      slots: 2, defaults: ['1', 'g'] },
+    { id: 'speedUp',    label: 'Speed up',           slots: 1, defaults: ['f'] },
+    { id: 'speedDown',  label: 'Speed down',         slots: 1, defaults: ['v'] },
+    { id: 'jumpDown',   label: 'Jump forward',       slots: 1, defaults: ['ArrowDown'] },
+    { id: 'jumpUp',     label: 'Jump back',          slots: 1, defaults: ['ArrowUp'] },
+    { id: 'jumpToTop',  label: 'Jump to top',        slots: 1, defaults: ['t'] }
+  ];
+  const SC_STORE_KEY = 'tp_shortcuts';
+  let shortcuts = loadShortcuts();
+
+  function loadShortcuts() {
+    try {
+      const raw = localStorage.getItem(SC_STORE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    const def = {};
+    SHORTCUT_ACTIONS.forEach(a => { def[a.id] = [...a.defaults]; });
+    return def;
+  }
+  function saveShortcuts() {
+    try { localStorage.setItem(SC_STORE_KEY, JSON.stringify(shortcuts)); } catch(e) {}
+  }
+  function keyLabel(k) {
+    if (!k) return '';
+    const map = { ArrowDown: '↓', ArrowUp: '↑', ArrowLeft: '←', ArrowRight: '→',
+      ' ': 'Space', Escape: 'Esc', Enter: '↵' };
+    return map[k] || k.toUpperCase();
+  }
+
+  // ---- Render shortcuts settings UI ----
+  let listeningEl = null;
+  let listeningAction = null;
+  let listeningSlot = null;
+
+  function renderShortcutTable() {
+    shortcutTable.innerHTML = '';
+    SHORTCUT_ACTIONS.forEach(action => {
+      const labelEl = document.createElement('div');
+      labelEl.className = 'sc-label';
+      labelEl.textContent = action.label;
+      shortcutTable.appendChild(labelEl);
+
+      for (let s = 0; s < action.slots; s++) {
+        const key = (shortcuts[action.id] || [])[s] || null;
+        const badge = document.createElement('div');
+        badge.className = 'sc-key' + (key ? '' : ' empty');
+        badge.textContent = keyLabel(key) || '—';
+        badge.dataset.action = action.id;
+        badge.dataset.slot = s;
+        badge.onclick = () => startListening(badge, action.id, s);
+        shortcutTable.appendChild(badge);
+      }
+      // pad empty columns if slots < 2
+      if (action.slots < 2) {
+        const spacer = document.createElement('div');
+        shortcutTable.appendChild(spacer);
+      }
+    });
+  }
+
+  function startListening(el, actionId, slot) {
+    if (listeningEl) listeningEl.classList.remove('listening');
+    listeningEl = el;
+    listeningAction = actionId;
+    listeningSlot = slot;
+    el.classList.add('listening');
+    el.textContent = '…';
+  }
+
+  document.addEventListener('keydown', e => {
+    if (listeningEl) {
+      e.preventDefault();
+      if (e.key === 'Escape') {
+        listeningEl.classList.remove('listening');
+        listeningEl = null; listeningAction = null; listeningSlot = null;
+        return;
+      }
+      if (!shortcuts[listeningAction]) shortcuts[listeningAction] = [];
+      shortcuts[listeningAction][listeningSlot] = e.key;
+      saveShortcuts();
+      listeningEl.classList.remove('listening');
+      listeningEl = null;
+      renderShortcutTable();
+      return;
+    }
+
+    // Don't fire when settings overlay is open (except listening mode handled above)
+    if (!settingsOverlay.classList.contains('hidden')) return;
+    // Don't fire when connect overlay is visible
+    if (!connectOverlay.classList.contains('hidden')) return;
+
+    handleShortcutKey(e.key);
+  });
+
+  function handleShortcutKey(key) {
+    for (const action of SHORTCUT_ACTIONS) {
+      const keys = shortcuts[action.id] || [];
+      if (keys.some(k => k && k.toLowerCase() === key.toLowerCase())) {
+        performAction(action.id);
+        return;
+      }
+    }
+  }
+
+  function jumpLines(direction) {
+    const lineHeight = state.fontSize * 1.5;
+    const jumpPx = 5 * lineHeight;
+    setScroll(scrollPosition + direction * jumpPx);
+    broadcastScroll();
+  }
+
+  function performAction(actionId) {
+    switch (actionId) {
+      case 'playPause':
+        updateState({ playState: state.playState === 'playing' ? 'paused' : 'playing' }); break;
+      case 'speedUp':
+        updateState({ scrollSpeed: Math.min(400, state.scrollSpeed + 10) }); break;
+      case 'speedDown':
+        updateState({ scrollSpeed: Math.max(0, state.scrollSpeed - 10) }); break;
+      case 'jumpDown':
+        jumpLines(1); break;
+      case 'jumpUp':
+        jumpLines(-1); break;
+      case 'jumpToTop':
+        setScroll(0); broadcastScroll(); break;
+    }
+  }
+
+  // ---- Settings UI ----
+  settingsBtn.onclick = () => {
+    renderShortcutTable();
+    settingsOverlay.classList.remove('hidden');
+  };
+  closeSettings.onclick = () => settingsOverlay.classList.add('hidden');
+  settingsOverlay.addEventListener('pointerdown', e => {
+    if (e.target === settingsOverlay) settingsOverlay.classList.add('hidden');
+  });
+
+  // ---- Viewport reporting (uses visualViewport for accuracy) ----
+  function reportViewport() {
+    if (conn && conn.open) {
+      const vp = window.visualViewport || window;
+      conn.send({ type: 'viewport', width: vp.width, height: vp.height });
+    }
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', reportViewport);
+  } else {
+    window.addEventListener('resize', reportViewport);
+  }
+
+  // ---- Render ----
   function render() {
     textContent.textContent = state.text;
     textContent.style.fontSize = state.fontSize + 'px';
     textContent.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
     const sx = state.mirroredH ? -1 : 1;
     const sy = state.mirroredV ? -1 : 1;
-    textContent.style.transform = `scale(${sx}, ${sy})`;
+    textContent.style.transform = `scale(${sx},${sy})`;
     playBtn.textContent = state.playState === 'playing' ? 'Pause' : 'Play';
     playBtn.classList.toggle('active', state.playState === 'playing');
     mirrorHBtn.classList.toggle('active', state.mirroredH);
     mirrorVBtn.classList.toggle('active', state.mirroredV);
-    fontSizeDisplay.textContent = state.fontSize + 'px';
-    speedDisplay.textContent = state.scrollSpeed;
+    fontSizeVal.textContent = state.fontSize;
+    speedVal.textContent = state.scrollSpeed;
   }
 
   function broadcastState() {
+    if (conn && conn.open) conn.send({ type: 'state', data: state });
+  }
+
+  function broadcastScroll() {
     if (conn && conn.open) {
-      conn.send({ type: 'state', data: state });
+      const max = scrollArea.scrollHeight - scrollArea.clientHeight;
+      const pct = max > 0 ? Math.min(1, Math.max(0, scrollPosition / max)) : 0;
+      conn.send({ type: 'scroll', position: pct });
     }
   }
 
-  function sendViewport() {
-    if (conn && conn.open) {
-      conn.send({ type: 'viewport', width: window.innerWidth, height: window.innerHeight });
-    }
-  }
-  window.addEventListener('resize', sendViewport);
-
-  // ---- Scroll position tracking ----
-  // scrollArea.scrollTop only stores whole pixels, which breaks slow continuous
-  // scrolling (a fraction-of-a-pixel increment per frame gets rounded away).
-  // Track position as a float ourselves and only resync from the DOM on manual scroll.
-  let scrollPosition = scrollArea.scrollTop;
-  let programmaticScroll = false;
+  // ---- Scroll tracking (float avoids sub-pixel rounding loss) ----
+  let scrollPosition = 0;
+  let programmatic = false;
 
   scrollArea.addEventListener('scroll', () => {
-    if (!programmaticScroll) {
-      scrollPosition = scrollArea.scrollTop;
-    }
+    if (!programmatic) scrollPosition = scrollArea.scrollTop;
   });
 
   function setScroll(px) {
     const max = Math.max(0, scrollArea.scrollHeight - scrollArea.clientHeight);
     scrollPosition = Math.max(0, Math.min(px, max));
-    programmaticScroll = true;
+    programmatic = true;
     scrollArea.scrollTop = scrollPosition;
-    programmaticScroll = false;
+    programmatic = false;
   }
 
-  // Update state while preserving relative scroll position (handles live text edits)
   function updateState(partial) {
     const max = scrollArea.scrollHeight - scrollArea.clientHeight;
     const pct = max > 0 ? scrollPosition / max : 0;
@@ -266,32 +457,21 @@
 
   // ---- Auto-scroll loop ----
   let lastTime = null;
-  function tick(timestamp) {
+  function tick(ts) {
     if (state.playState === 'playing') {
-      if (lastTime !== null) {
-        const dt = (timestamp - lastTime) / 1000;
-        setScroll(scrollPosition + state.scrollSpeed * dt);
-      }
-      lastTime = timestamp;
-    } else {
-      lastTime = null;
-    }
+      if (lastTime !== null) setScroll(scrollPosition + state.scrollSpeed * (ts - lastTime) / 1000);
+      lastTime = ts;
+    } else { lastTime = null; }
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
 
-  // Broadcast scroll position periodically for the live preview
-  setInterval(() => {
-    if (conn && conn.open) {
-      const max = scrollArea.scrollHeight - scrollArea.clientHeight;
-      const pct = max > 0 ? Math.min(1, Math.max(0, scrollPosition / max)) : 0;
-      conn.send({ type: 'scroll', position: pct });
-    }
-  }, 150);
+  // Broadcast scroll every 150ms
+  setInterval(broadcastScroll, 150);
 
   // ---- Local controls ----
-  playBtn.onclick = () => updateState({ playState: state.playState === 'playing' ? 'paused' : 'playing' });
-  resetBtn.onclick = () => setScroll(0);
+  playBtn.onclick   = () => updateState({ playState: state.playState === 'playing' ? 'paused' : 'playing' });
+  resetBtn.onclick  = () => { setScroll(0); broadcastScroll(); };
   mirrorHBtn.onclick = () => updateState({ mirroredH: !state.mirroredH });
   mirrorVBtn.onclick = () => updateState({ mirroredV: !state.mirroredV });
   fontIncBtn.onclick = () => updateState({ fontSize: Math.min(200, state.fontSize + 4) });
@@ -299,69 +479,44 @@
   speedIncBtn.onclick = () => updateState({ scrollSpeed: Math.min(400, state.scrollSpeed + 10) });
   speedDecBtn.onclick = () => updateState({ scrollSpeed: Math.max(0, state.scrollSpeed - 10) });
 
-  toggleControlsBtn.onclick = () => {
-    controls.classList.toggle('collapsed');
-    toggleControlsBtn.textContent = controls.classList.contains('collapsed') ? '▴' : '▾';
+  toggleBar.onclick = () => {
+    controls.classList.toggle('hidden');
+    toggleBar.textContent = controls.classList.contains('hidden') ? '▴' : '▾';
   };
 
   // ---- Remote messages ----
-  function handleRemoteMessage(msg) {
-    if (msg.type === 'update') {
-      if (msg.field === 'reset') {
-        setScroll(0);
-        return;
-      }
-      if (msg.field === 'seek') {
-        const max = scrollArea.scrollHeight - scrollArea.clientHeight;
-        setScroll(msg.value * Math.max(0, max));
-        return;
-      }
-      updateState({ [msg.field]: msg.value });
+  function handleRemote(msg) {
+    if (msg.type !== 'update') return;
+    if (msg.field === 'reset') { setScroll(0); broadcastScroll(); return; }
+    if (msg.field === 'seek') {
+      const max = scrollArea.scrollHeight - scrollArea.clientHeight;
+      setScroll(msg.value * Math.max(0, max)); return;
     }
+    updateState({ [msg.field]: msg.value });
   }
 
-  // ---- Connection (this prompter is the client; control page hosts the session) ----
+  // ---- Connection ----
+  function setStatus(text, connected) {
+    statusText.textContent = text;
+    statusDot.classList.toggle('on', !!connected);
+  }
+
   codeInput.addEventListener('input', () => {
     codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6);
   });
-  codeInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') connectBtn.click();
-  });
-
-  function setStatus(text, connected) {
-    statusText.textContent = text;
-    statusDot.classList.toggle('connected', !!connected);
-  }
-
-  function openOverlay() {
-    const isConnected = conn && conn.open;
-    connectFormSection.classList.toggle('hidden', isConnected);
-    connectedSection.classList.toggle('hidden', !isConnected);
-    connectOverlay.classList.remove('hidden');
-  }
-  statusBadge.onclick = openOverlay;
-  closeOverlayBtn.onclick = () => connectOverlay.classList.add('hidden');
-
-  disconnectBtn.onclick = () => {
-    if (conn) conn.close();
-    conn = null;
-    setStatus('OFFLINE', false);
-    connectOverlay.classList.add('hidden');
-  };
+  codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') connectBtn.click(); });
 
   connectBtn.onclick = () => {
     const code = codeInput.value.trim();
     if (!/^\d{6}$/.test(code)) {
-      connectStatus.textContent = 'Enter the 6-digit code shown on the control page.';
+      connectStatus.textContent = 'Enter the 6-digit code from the control page.';
       return;
     }
     connectStatus.textContent = 'Connecting...';
     connectBtn.disabled = true;
     setStatus('CONNECTING', false);
 
-    if (!peer) {
-      peer = new Peer();
-    }
+    if (!peer) peer = new Peer();
 
     const tryConnect = () => {
       conn = peer.connect('tp-' + code, { reliable: true });
@@ -370,23 +525,20 @@
         setStatus('CONNECTED', true);
         connectOverlay.classList.add('hidden');
         broadcastState();
-        sendViewport();
+        reportViewport();
       });
-      conn.on('data', handleRemoteMessage);
-      conn.on('close', () => {
-        conn = null;
-        setStatus('OFFLINE', false);
-      });
+      conn.on('data', handleRemote);
+      conn.on('close', () => { conn = null; setStatus('OFFLINE', false); });
       conn.on('error', () => {
         connectBtn.disabled = false;
         connectStatus.textContent = 'Connection error. Check the code and try again.';
         setStatus('OFFLINE', false);
+        connectOverlay.classList.remove('hidden');
       });
     };
 
-    if (peer.open) {
-      tryConnect();
-    } else {
+    if (peer.open) { tryConnect(); }
+    else {
       peer.on('open', tryConnect);
       peer.on('error', err => {
         connectBtn.disabled = false;
@@ -396,25 +548,20 @@
     }
   };
 
-  // ---- Auto-connect if ?code= is in the URL (e.g. opened via QR code) ----
+  // ---- Auto-connect from ?code= URL param ----
   (function autoConnect() {
     const params = new URLSearchParams(window.location.search);
     const urlCode = params.get('code');
     if (urlCode && /^\d{6}$/.test(urlCode)) {
       codeInput.value = urlCode;
-      // Small delay so PeerJS has time to initialise before we call connect
       setTimeout(() => connectBtn.click(), 600);
-    } else {
-      connectOverlay.classList.remove('hidden');
     }
   })();
+
+  // ---- Wake lock ----
   let wakeLock = null;
   async function requestWakeLock() {
-    try {
-      if ('wakeLock' in navigator) {
-        wakeLock = await navigator.wakeLock.request('screen');
-      }
-    } catch (e) { /* ignore if unsupported or denied */ }
+    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
   }
   requestWakeLock();
   document.addEventListener('visibilitychange', () => {

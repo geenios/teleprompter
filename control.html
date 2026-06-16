@@ -151,11 +151,7 @@
   }
   .highlight-span { background:rgba(255,200,0,0.75); border-radius:2px; }
 
-  /* Sentence position indicator */
-  #sentenceIndicator {
-    font-size:11px; color:var(--muted); text-align:center;
-    min-height:16px; letter-spacing:0.05em;
-  }
+  /* Sentence position indicator - removed */
 
   /* Controls */
   .control-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -217,6 +213,7 @@
     <div id="hostCode" class="mono">------</div>
     <div id="connectionStatus">Generating session...</div>
     <button id="newCodeBtn">Generate new code</button>
+    <button id="skipBtn" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Skip, set up script first</button>
   </div>
 
   <div id="mainPanel">
@@ -227,7 +224,10 @@
     </div>
 
     <div id="editorPane">
-      <div class="label">Script</div>
+      <div class="control-row">
+        <div class="label">Script</div>
+        <span id="saveStatus" style="font-size:11px;color:var(--muted);"></span>
+      </div>
       <div class="toolbar">
         <button class="toolbar-btn" id="undoBtn" title="Undo (Ctrl+Z)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -239,6 +239,9 @@
             <path d="M21 7v6h-6"/><path d="M21 13C18.5 7.5 12 5 7 8.5S1 18.5 5 22.5"/>
           </svg>
         </button>
+        <div style="width:1px;background:var(--border);height:22px;margin:0 2px;"></div>
+        <button class="toolbar-btn" id="copyBtn" title="Copy script" style="font-size:12px;width:auto;padding:0 10px;">Copy</button>
+        <button class="toolbar-btn" id="exportBtn" title="Export as .md" style="font-size:12px;width:auto;padding:0 10px;">Export .md</button>
       </div>
       <div id="editorRow">
         <div id="editorStack">
@@ -257,7 +260,6 @@
         </div>
       </div>
 
-      <div id="sentenceIndicator"></div>
 
       <hr class="divider">
 
@@ -304,13 +306,21 @@
       <hr class="divider">
 
       <div id="statusBar">
-        <div id="sideStatus">CONNECTED</div>
-        <span id="persistentCode">------</span>
+        <div id="sideStatus">DISCONNECTED</div>
+        <span id="persistentCode" style="cursor:pointer;" title="Show QR code">------</span>
         <div class="action-btns">
-          <button class="small-btn" id="copyBtn">Copy</button>
-          <button class="small-btn" id="exportBtn">Export .md</button>
+          <button class="small-btn" id="showCodeBtn">Show QR</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="qrModal" style="display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;">
+    <div style="background:#141414;border:1px solid #2a2a2a;border-radius:12px;padding:28px 24px;text-align:center;display:flex;flex-direction:column;gap:14px;min-width:260px;">
+      <div style="font-size:13px;color:#8a8a8a;text-transform:uppercase;letter-spacing:0.06em;">Connect prompter</div>
+      <div id="qrModalCanvas"></div>
+      <div id="qrModalCode" style="font-family:'SF Mono','Courier New',monospace;font-size:40px;letter-spacing:0.2em;color:#ffc800;border:2px solid #ffc800;border-radius:8px;padding:12px 18px;"></div>
+      <button id="closeQrModal" style="background:none;border:1px solid #2a2a2a;color:#f0f0f0;padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;">Close</button>
     </div>
   </div>
 
@@ -329,11 +339,17 @@
   const hostCode = document.getElementById('hostCode');
   const connectionStatus = document.getElementById('connectionStatus');
   const newCodeBtn = document.getElementById('newCodeBtn');
+  const skipBtn = document.getElementById('skipBtn');
   const qrCanvas = document.getElementById('qrCanvas');
   const reconnectBanner = document.getElementById('reconnectBanner');
   const bannerCode = document.getElementById('bannerCode');
   const dismissBanner = document.getElementById('dismissBanner');
   const persistentCode = document.getElementById('persistentCode');
+  const showCodeBtn = document.getElementById('showCodeBtn');
+  const qrModal = document.getElementById('qrModal');
+  const qrModalCanvas = document.getElementById('qrModalCanvas');
+  const qrModalCode = document.getElementById('qrModalCode');
+  const closeQrModal = document.getElementById('closeQrModal');
   const restoreToast = document.getElementById('restoreToast');
   const savedTimeEl = document.getElementById('savedTime');
   const restoreBtn = document.getElementById('restoreBtn');
@@ -347,6 +363,7 @@
   const scrubberThumb = document.getElementById('scrubberThumb');
   const exportBtn = document.getElementById('exportBtn');
   const copyBtn = document.getElementById('copyBtn');
+  const saveStatus = document.getElementById('saveStatus');
 
   const playBtn = document.getElementById('playBtn');
   const resetBtn = document.getElementById('resetBtn');
@@ -365,7 +382,6 @@
   const monitor = document.getElementById('monitor');
   const previewBox = document.getElementById('previewBox');
   const previewText = document.getElementById('previewText');
-  const sentenceIndicator = document.getElementById('sentenceIndicator');
   const sideStatus = document.getElementById('sideStatus');
 
   const FONTS = {
@@ -396,8 +412,6 @@
   let peer = null;
   let conn = null;
   let code = generateCode();
-  let sentenceStarts = [];
-  let currentSentenceIdx = 0;
 
   const AUTOSAVE_KEY = 'tp_autosave';
   const AUTOSAVE_DELAY = 15000;
@@ -409,8 +423,8 @@
 
   // ---- QR Code ----
   function buildPrompterUrl(c) {
-    const base = window.location.href.replace(/control\.html.*$/, '');
-    return base + 'prompter.html?code=' + c;
+    const dir = window.location.pathname.replace(/\/[^/]*$/, '/');
+    return window.location.origin + dir + 'prompter.html?code=' + c;
   }
 
   let qrInstance = null;
@@ -430,7 +444,9 @@
   function autosave(text) {
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ text, savedAt: Date.now() }));
-    } catch(e) {}
+      saveStatus.textContent = 'Saved';
+      setTimeout(() => { saveStatus.textContent = ''; }, 3000);
+    } catch(e) { saveStatus.textContent = 'Save failed'; }
   }
 
   function loadAutosave() {
@@ -460,47 +476,9 @@
   dismissRestoreBtn.onclick = () => restoreToast.classList.remove('visible');
 
   // ---- Sentence navigation ----
-  function buildSentenceStarts(text) {
-    const starts = [0];
-    const re = /[.!?]\s+|\n{2,}/g;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      const idx = m.index + m[0].length;
-      if (idx < text.length && /\S/.test(text[idx])) starts.push(idx);
-    }
-    return starts;
-  }
-
-  function updateSentenceIndicator() {
-    if (!sentenceStarts.length) return;
-    sentenceIndicator.textContent = 'Sentence ' + (currentSentenceIdx + 1) + ' / ' + sentenceStarts.length;
-  }
-
-  function getSentenceIdxFromScrollPct() {
-    const total = state.text.length || 1;
-    const { startChar } = getHighlightRange();
-    let best = 0;
-    for (let i = 0; i < sentenceStarts.length; i++) {
-      if (sentenceStarts[i] <= startChar) best = i; else break;
-    }
-    return best;
-  }
-
-  function jumpToSentence(idx) {
-    if (!sentenceStarts.length) return;
-    idx = Math.max(0, Math.min(idx, sentenceStarts.length - 1));
-    currentSentenceIdx = idx;
-    const charIdx = sentenceStarts[idx];
-    const pct = scrollPctFromCharIndex(charIdx);
-    scrollPct = pct;
-    sendUpdate('seek', pct);
-    correctPreviewScroll(pct);
-    renderHighlight();
-    updateScrubber();
-    updateSentenceIndicator();
-    const total = state.text.length || 1;
-    textArea.scrollTop = (charIdx / total) * textArea.scrollHeight;
-    highlightLayer.scrollTop = textArea.scrollTop;
+  function jumpLines(direction) {
+    const jumpPx = 5 * state.fontSize * 1.5;
+    scrubByPreviewPixels(direction * jumpPx * previewScale);
   }
 
   // ---- Rendering ----
@@ -518,11 +496,9 @@
     playBtn.classList.toggle('active', state.playState === 'playing');
     previewText.textContent = state.text;
     previewText.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
-    sentenceStarts = buildSentenceStarts(state.text);
     updateMonitorScale();
     renderHighlight();
     updateScrubber();
-    updateSentenceIndicator();
   }
 
   // ---- To-scale preview ----
@@ -571,8 +547,6 @@
     sendUpdate('seek', scrollPct);
     renderHighlight();
     updateScrubber();
-    currentSentenceIdx = getSentenceIdxFromScrollPct();
-    updateSentenceIndicator();
     const { startChar } = getHighlightRange();
     const total = state.text.length || 1;
     textArea.scrollTop = (startChar / total) * textArea.scrollHeight;
@@ -719,8 +693,6 @@
     updateScrubber();
     textArea.scrollTop = charF * textArea.scrollHeight;
     highlightLayer.scrollTop = textArea.scrollTop;
-    currentSentenceIdx = getSentenceIdxFromScrollPct();
-    updateSentenceIndicator();
   }
 
   scrubberThumb.addEventListener('pointerdown', e => {
@@ -755,8 +727,7 @@
   resetBtn.onclick = () => {
     sendUpdate('reset', true);
     scrollPct = 0; previewScrollPos = 0; previewBox.scrollTop = 0;
-    currentSentenceIdx = 0;
-    renderHighlight(); updateScrubber(); updateSentenceIndicator();
+    renderHighlight(); updateScrubber();
   };
   mirrorHBtn.onclick = () => sendUpdate('mirroredH', !state.mirroredH);
   mirrorVBtn.onclick = () => sendUpdate('mirroredV', !state.mirroredV);
@@ -782,7 +753,7 @@
     const value = textArea.value;
     textDebounce = setTimeout(() => sendUpdate('text', value), 250);
     renderHighlight();
-    sentenceStarts = buildSentenceStarts(value);
+    saveStatus.textContent = 'Saving...';
     clearTimeout(autoSaveDebounce);
     autoSaveDebounce = setTimeout(() => autosave(value), AUTOSAVE_DELAY);
   };
@@ -807,10 +778,10 @@
       textArea.focus(); document.execCommand('redo'); textArea.blur(); return;
     }
 
-    // Arrow up/down: jump between sentences when editor not focused
+    // Arrow up/down: jump 5 lines when editor not focused
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !inEditor) {
       e.preventDefault();
-      jumpToSentence(e.key === 'ArrowDown' ? currentSentenceIdx + 1 : currentSentenceIdx - 1);
+      jumpLines(e.key === 'ArrowDown' ? 1 : -1);
     }
   });
 
@@ -835,16 +806,13 @@
   function handleData(msg) {
     if (msg.type === 'state') {
       state = msg.data;
-      sentenceStarts = buildSentenceStarts(state.text);
-      renderControls();
+        renderControls();
     } else if (msg.type === 'scroll') {
       scrollPct = msg.position;
       if (!draggingPreview) correctPreviewScroll(scrollPct);
       renderHighlight();
       updateScrubber();
-      currentSentenceIdx = getSentenceIdxFromScrollPct();
-      updateSentenceIndicator();
-    } else if (msg.type === 'viewport') {
+        } else if (msg.type === 'viewport') {
       phoneViewport = { width: msg.width, height: msg.height };
       updateMonitorScale();
     }
@@ -852,6 +820,35 @@
 
   window.addEventListener('resize', () => { updateMonitorScale(); updateScrubber(); });
   dismissBanner.onclick = () => reconnectBanner.classList.remove('visible');
+
+  // Skip: open the main panel without waiting for a prompter
+  skipBtn.onclick = () => {
+    connectionPanel.classList.add('hidden');
+    mainPanel.classList.add('visible');
+    updateMonitorScale();
+    updateScrubber();
+  };
+
+  // Show QR modal from main panel
+  function openQrModal() {
+    qrModalCanvas.innerHTML = '';
+    try {
+      new QRCode(qrModalCanvas, {
+        text: buildPrompterUrl(code),
+        width: 180, height: 180,
+        colorDark: '#000', colorLight: '#fff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } catch(e) {}
+    qrModalCode.textContent = code;
+    qrModal.style.display = 'flex';
+  }
+  showCodeBtn.onclick = openQrModal;
+  persistentCode.onclick = openQrModal;
+  closeQrModal.onclick = () => { qrModal.style.display = 'none'; };
+  qrModal.addEventListener('pointerdown', e => {
+    if (e.target === qrModal) qrModal.style.display = 'none';
+  });
 
   // ---- Host the session ----
   function applyCode(c) {
