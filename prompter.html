@@ -553,28 +553,6 @@
     toggleBar.textContent = controls.classList.contains('hidden') ? '▴' : '▾';
   };
 
-  // ---- Auto-reconnect ----
-  let reconnectTimer = null;
-  function scheduleReconnect(code) {
-    if (!code || !/^\d{6}$/.test(code)) return;
-    clearTimeout(reconnectTimer);
-    setStatus('RECONNECTING…', false);
-    reconnectTimer = setTimeout(() => {
-      if (conn && conn.open) return;
-      conn = peer.connect('tp-' + code, { reliable: true });
-      conn.on('open', () => {
-        clearTimeout(reconnectTimer);
-        setStatus('CONNECTED', true);
-        connectOverlay.classList.add('hidden');
-        broadcastState();
-        reportViewport();
-      });
-      conn.on('data', handleRemote);
-      conn.on('close', () => { conn = null; setStatus('OFFLINE', false); scheduleReconnect(code); });
-      conn.on('error', () => { conn = null; setStatus('OFFLINE', false); scheduleReconnect(code); });
-    }, 3000);
-  }
-
   // ---- Remote messages ----
   function handleRemote(msg) {
     if (msg.type !== 'update') return;
@@ -607,7 +585,7 @@
     connectBtn.disabled = true;
     setStatus('CONNECTING', false);
 
-    if (!peer || peer.destroyed) peer = new Peer();
+    if (!peer) peer = new Peer();
 
     const tryConnect = () => {
       conn = peer.connect('tp-' + code, { reliable: true });
@@ -622,11 +600,10 @@
       conn.on('close', () => {
         conn = null;
         setStatus('OFFLINE', false);
-        scheduleReconnect(codeInput.value.trim());
       });
-      conn.on('error', err => {
+      conn.on('error', () => {
         connectBtn.disabled = false;
-        connectStatus.textContent = 'Connection error (' + (err.type||'unknown') + '). Check the code and try again.';
+        connectStatus.textContent = 'Connection error. Check the code and try again.';
         setStatus('OFFLINE', false);
         connectOverlay.classList.remove('hidden');
       });
@@ -637,9 +614,8 @@
       peer.on('open', tryConnect);
       peer.on('error', err => {
         connectBtn.disabled = false;
-        connectStatus.textContent = 'Error: ' + err.type + '. Check the code and try again.';
+        connectStatus.textContent = 'Error: ' + err.type;
         setStatus('OFFLINE', false);
-        connectOverlay.classList.remove('hidden');
       });
     }
   };

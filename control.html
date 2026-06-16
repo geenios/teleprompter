@@ -808,34 +808,56 @@ fileInput.onchange=e=>{
   if(!openingPanel.classList.contains('hidden'))enterMainPanel();
 };
 
-// ── PEER ──────────────────────────────────────────────────
-function acceptConnection(c){
-  conn=c;
-  conn.on('open',()=>{
-    sideStatus.textContent='CONNECTED';reconnectBanner.classList.remove('visible');
-    if(!openingPanel.classList.contains('hidden'))enterMainPanel();
-    if(conn.open)conn.send({type:'state',data:{...state,text:getActiveScript().text}});
-  });
-  conn.on('data',handleData);
-  conn.on('close',()=>{conn=null;sideStatus.textContent='DISCONNECTED';reconnectBanner.classList.add('visible');});
-}
-function ensureListening(){if(peer&&!peer.destroyed){peer.off('connection');peer.on('connection',acceptConnection);}}
-setInterval(ensureListening,3000);
+// ── PEER — exact v4 structure ─────────────────────────────
 function startHost(){
-  setPeerStatus(false);
   peer=new Peer('tp-'+peerCode);
-  peer.on('open',()=>{applyCode(peerCode);setPeerStatus(true);});
-  peer.on('connection',acceptConnection);
+  peer.on('open',()=>{
+    applyCode(peerCode);
+    setPeerStatus(true);
+  });
+  peer.on('connection',c=>{
+    conn=c;
+    conn.on('open',()=>{
+      sideStatus.textContent='CONNECTED';
+      reconnectBanner.classList.remove('visible');
+      if(!openingPanel.classList.contains('hidden'))enterMainPanel();
+      if(conn.open)conn.send({type:'state',data:{...state,text:getActiveScript().text}});
+    });
+    conn.on('data',handleData);
+    conn.on('close',()=>{
+      conn=null;
+      sideStatus.textContent='DISCONNECTED';
+      reconnectBanner.classList.add('visible');
+    });
+  });
   peer.on('error',err=>{
     setPeerStatus(false);
     if(err.type==='unavailable-id'){
       peerCode=generateCode();
       persistentCode.textContent=peerCode;
       peer.destroy();startHost();
+    }else{
+      console.warn('PeerJS error:',err.type);
     }
   });
 }
 startHost();
+
+// Watch for new connections when main panel is up (v4 reconnect pattern)
+setInterval(()=>{
+  if(peer&&!conn&&!peer.destroyed){
+    peer.on('connection',c=>{
+      conn=c;
+      conn.on('open',()=>{
+        sideStatus.textContent='CONNECTED';
+        reconnectBanner.classList.remove('visible');
+        if(conn.open)conn.send({type:'state',data:{...state,text:getActiveScript().text}});
+      });
+      conn.on('data',handleData);
+      conn.on('close',()=>{conn=null;sideStatus.textContent='DISCONNECTED';reconnectBanner.classList.add('visible');});
+    });
+  }
+},2000);
 </script>
 </body>
 </html>
