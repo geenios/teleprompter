@@ -18,9 +18,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 /* ── OPENING ── */
 #openingPanel{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px 24px;}
 #openingPanel.hidden{display:none;}
-.open-logo{font-size:18px;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:14px;}
+.open-logo{font-size:18px;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
+#qrBox{background:#fff;padding:12px;border-radius:10px;display:inline-block;}
+#qrBox canvas,#qrBox img{display:block;}
+#hostCode{font-family:"SF Mono","Courier New",monospace;font-size:44px;letter-spacing:.2em;color:var(--accent);border:2px solid var(--accent);border-radius:8px;padding:12px 20px;text-align:center;}
+#connectionStatus{color:var(--muted);font-size:13px;min-height:18px;}
+#newCodeBtn{background:none;border:1px solid var(--border);color:var(--muted);padding:8px 16px;border-radius:7px;font-size:13px;cursor:pointer;}
+#newCodeBtn:hover{border-color:var(--accent);color:var(--accent);}
+.open-divider{color:var(--muted);font-size:12px;letter-spacing:.05em;margin:4px 0;}
 .open-actions{display:flex;gap:12px;}
-.open-btn{padding:14px 36px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;border:none;}
+.open-btn{padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;border:none;}
 .open-btn.primary{background:var(--accent);color:#000;}
 .open-btn.secondary{background:var(--panel-2);color:var(--text);border:1px solid var(--border);}
 
@@ -163,9 +170,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <!-- ── OPENING ── -->
 <div id="openingPanel">
   <div class="open-logo">Teleprompter</div>
+  <div id="qrBox"><div id="qrCanvas"></div></div>
+  <div id="hostCode">------</div>
+  <div id="connectionStatus">Generating code…</div>
+  <button id="newCodeBtn">New code</button>
+  <div class="open-divider">— start a session —</div>
   <div class="open-actions">
     <button class="open-btn primary" id="newProjectBtn">New project</button>
     <button class="open-btn secondary" id="loadProjectBtn">Load project</button>
+    <input type="file" id="fileInput" accept=".tpsession,.json">
   </div>
 </div>
 
@@ -185,7 +198,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
   <div class="tab-session-area">
     <button class="tab-session-btn" id="saveSessionBtn">Save session</button>
     <button class="tab-session-btn" id="loadSessionBtn">Load session</button>
-    <input type="file" id="fileInput" accept=".tpsession,.json">
   </div>
 </div>
 
@@ -317,6 +329,7 @@ Save your full session (all scripts, notes, settings) as a .tpsession file and r
 // ── DOM REFS ──────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const openingPanel=$('openingPanel'), newProjectBtn=$('newProjectBtn'), loadProjectBtn=$('loadProjectBtn');
+const hostCode=$('hostCode'), connectionStatus=$('connectionStatus'), newCodeBtn=$('newCodeBtn'), qrCanvas=$('qrCanvas');
 const fileInput=$('fileInput');
 const qrModal=$('qrModal'), qrModalCanvas=$('qrModalCanvas'), qrModalCode=$('qrModalCode'), closeQrModal=$('closeQrModal');
 const mainPanel=$('mainPanel'), tabBar=$('tabBar');
@@ -586,7 +599,11 @@ function doLoadFile(file){
     }catch(e){alert('Could not load session file.');}
   };reader.readAsText(file);fileInput.value='';
 }
-fileInput.onchange=e=>{if(e.target.files[0])doLoadFile(e.target.files[0]);};
+fileInput.onchange=e=>{
+  if(!e.target.files[0])return;
+  doLoadFile(e.target.files[0]);
+  if(!openingPanel.classList.contains('hidden'))enterMainPanel();
+};
 loadSessionBtn.onclick=()=>fileInput.click();
 
 // ── AUTOSAVE / RESTORE ────────────────────────────────────
@@ -794,7 +811,17 @@ function enterMainPanel(){
   sentenceStarts=buildSentenceStarts(state.text);
   updateMonitorScale();updateScrubber();checkRestore();
 }
-function applyCode(c){peerCode=c;bannerCode.textContent=c;persistentCode.textContent=c;}
+function renderQr(c){
+  qrCanvas.innerHTML='';
+  try{new QRCode(qrCanvas,{text:buildPrompterUrl(c),width:180,height:180,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});}catch(e){}
+}
+function applyCode(c){
+  peerCode=c;
+  hostCode.textContent=c;
+  bannerCode.textContent=c;
+  persistentCode.textContent=c;
+  renderQr(c);
+}
 function setPeerStatus(ready){
   const dot=document.getElementById('peerStatus');
   if(dot){dot.style.color=ready?'var(--accent)':'var(--muted)';dot.title=ready?'Signaling server: connected':'Signaling server: connecting…';}
@@ -802,18 +829,15 @@ function setPeerStatus(ready){
 
 newProjectBtn.onclick=()=>{session=defaultSession(true);enterMainPanel();};
 loadProjectBtn.onclick=()=>fileInput.click();
-fileInput.onchange=e=>{
-  if(!e.target.files[0])return;
-  doLoadFile(e.target.files[0]);
-  if(!openingPanel.classList.contains('hidden'))enterMainPanel();
-};
 
 // ── PEER — exact v4 structure ─────────────────────────────
 function startHost(){
   peer=new Peer('tp-'+peerCode);
+  connectionStatus.textContent='Waiting for prompter…';
   peer.on('open',()=>{
     applyCode(peerCode);
     setPeerStatus(true);
+    connectionStatus.textContent='Waiting for prompter…';
   });
   peer.on('connection',c=>{
     conn=c;
@@ -837,10 +861,12 @@ function startHost(){
       persistentCode.textContent=peerCode;
       peer.destroy();startHost();
     }else{
+      connectionStatus.textContent='Error: '+err.type;
       console.warn('PeerJS error:',err.type);
     }
   });
 }
+newCodeBtn.onclick=()=>{if(peer)peer.destroy();conn=null;peerCode=generateCode();connectionStatus.textContent='Generating…';setPeerStatus(false);startHost();};
 startHost();
 
 // Watch for new connections when main panel is up (v4 reconnect pattern)
