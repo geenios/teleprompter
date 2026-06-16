@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Teleprompter Control</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -25,10 +26,10 @@
   }
   .mono { font-family: "SF Mono", "Courier New", monospace; }
 
-  /* ---- Connection screen (this page hosts the session) ---- */
+  /* ---- Connection screen ---- */
   #connectionPanel {
     height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:18px; text-align:center; padding:24px;
+    gap:20px; text-align:center; padding:24px;
   }
   #connectionPanel.hidden { display:none; }
   #connectionPanel h1 { font-size:20px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); }
@@ -36,29 +37,73 @@
   #hostCode {
     font-size:56px; letter-spacing:0.18em; text-align:center;
     background:var(--panel); border:2px solid var(--accent); color:var(--accent);
-    border-radius:10px; padding:18px 28px;
+    border-radius:10px; padding:18px 28px; font-family:"SF Mono","Courier New",monospace;
   }
   #connectionStatus { color:var(--muted); font-size:13px; min-height:18px; }
   #newCodeBtn {
     background:none; border:1px solid var(--border); color:var(--text-color);
     padding:10px 20px; border-radius:8px; font-size:14px; cursor:pointer;
   }
-  #newCodeBtn:hover { border-color: var(--accent); color: var(--accent); }
+  #newCodeBtn:hover { border-color:var(--accent); color:var(--accent); }
+  #qrBox {
+    background:#fff; padding:12px; border-radius:10px; display:inline-block;
+  }
+  #qrBox canvas, #qrBox img { display:block; }
+
+  /* ---- Reconnect banner (shown when prompter drops while main panel is up) ---- */
+  #reconnectBanner {
+    display:none; position:absolute; top:0; left:0; right:0; z-index:20;
+    background:rgba(18,18,18,0.97); border-bottom:1px solid var(--accent);
+    padding:10px 20px; align-items:center; gap:14px; justify-content:center;
+  }
+  #reconnectBanner.visible { display:flex; }
+  #reconnectBanner span { font-size:13px; color:var(--muted); }
+  #reconnectBanner .code-inline {
+    font-family:"SF Mono","Courier New",monospace; color:var(--accent); font-size:15px;
+    letter-spacing:0.12em;
+  }
+  #dismissBanner {
+    background:none; border:1px solid var(--border); color:var(--text-color);
+    padding:5px 12px; border-radius:6px; font-size:13px; cursor:pointer; margin-left:auto;
+  }
+
+  /* ---- Restore saved script toast ---- */
+  #restoreToast {
+    display:none; position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:99;
+    background:var(--panel); border:1px solid var(--accent); border-radius:10px;
+    padding:14px 20px; align-items:center; gap:14px; box-shadow:0 4px 24px rgba(0,0,0,0.6);
+    white-space:nowrap;
+  }
+  #restoreToast.visible { display:flex; }
+  #restoreToast span { font-size:14px; color:var(--text-color); }
+  #restoreToast .saved-time { font-size:12px; color:var(--muted); }
+  .toast-btn {
+    background:var(--accent); color:#000; border:none; padding:8px 16px;
+    border-radius:7px; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .toast-btn.secondary {
+    background:none; border:1px solid var(--border); color:var(--muted); font-weight:400;
+  }
 
   /* ---- Main control screen ---- */
-  #mainPanel { display:none; height:100vh; }
+  #mainPanel { display:none; height:100vh; position:relative; }
   #mainPanel.visible { display:grid; grid-template-columns: 1.4fr 1fr; gap:1px; background:var(--border); }
-  @media (max-width: 800px) {
-    #mainPanel.visible { grid-template-columns: 1fr; }
-  }
+  @media (max-width: 800px) { #mainPanel.visible { grid-template-columns: 1fr; } }
 
   #editorPane, #sidePane { background:var(--bg); padding:20px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
-  #editorPane { overflow:hidden; } /* the editor itself scrolls, the pane shouldn't */
+  #editorPane { overflow:hidden; }
 
-  .label {
-    font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); font-weight:600;
+  .label { font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); font-weight:600; }
+
+  /* Editor toolbar (undo/redo) */
+  .toolbar { display:flex; gap:6px; flex-shrink:0; }
+  .toolbar-btn {
+    background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
+    border-radius:6px; width:34px; height:34px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
   }
-
+  .toolbar-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .toolbar-btn svg { width:16px; height:16px; }
 
   /* Editor with highlight overlay + scrubber */
   #editorRow { flex:1; display:flex; gap:10px; min-height:0; }
@@ -67,8 +112,7 @@
     position:absolute; inset:0; margin:0; box-sizing:border-box;
     padding:16px; font-size:16px; line-height:1.6;
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-    white-space:pre-wrap; word-wrap:break-word; overflow-y:auto;
-    border-radius:8px;
+    white-space:pre-wrap; word-wrap:break-word; overflow-y:auto; border-radius:8px;
   }
   #highlightLayer {
     color:transparent; background:var(--panel); border:1px solid transparent;
@@ -76,9 +120,9 @@
   }
   #textArea {
     background:transparent; color:var(--text-color); border:1px solid var(--border);
-    resize:none; outline:none; z-index:2; caret-color: var(--accent);
+    resize:none; outline:none; z-index:2; caret-color:var(--accent);
   }
-  #textArea:focus { border-color: var(--accent); }
+  #textArea:focus { border-color:var(--accent); }
 
   #scrubberTrack {
     width:16px; background:var(--panel); border:1px solid var(--border); border-radius:8px;
@@ -90,23 +134,28 @@
   }
   #scrubberThumb:active { cursor:grabbing; opacity:1; }
 
-  /* Monitor / live preview (to-scale replica of the phone screen, sized in JS) */
+  /* Monitor */
   #monitor {
     background:#000; border:1px solid var(--border); border-radius:8px;
-    overflow:hidden; position:relative; margin: 0 auto;
+    overflow:hidden; position:relative; margin:0 auto;
   }
   #previewBox {
     width:100%; height:100%; overflow:hidden; position:relative;
-    container-type: size; cursor: grab; touch-action: none;
-    user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;
+    container-type:size; cursor:grab; touch-action:none;
+    user-select:none; -webkit-user-select:none;
   }
-  #previewBox.dragging { cursor: grabbing; }
+  #previewBox.dragging { cursor:grabbing; }
   #previewText {
-    color:#fff; padding: 60cqh 6cqw; white-space:pre-wrap; word-wrap:break-word; line-height:1.5;
-    transform-origin:center;
-    user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;
+    color:#fff; padding:60cqh 6cqw; white-space:pre-wrap; word-wrap:break-word; line-height:1.5;
+    user-select:none; -webkit-user-select:none;
   }
-  .highlight-span { background: rgba(255, 200, 0, 0.75); border-radius:2px; }
+  .highlight-span { background:rgba(255,200,0,0.75); border-radius:2px; }
+
+  /* Sentence position indicator */
+  #sentenceIndicator {
+    font-size:11px; color:var(--muted); text-align:center;
+    min-height:16px; letter-spacing:0.05em;
+  }
 
   /* Controls */
   .control-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -117,12 +166,10 @@
   }
   .btn.active { border-color:var(--accent); color:var(--accent); }
   .btn-row { display:flex; gap:8px; align-items:stretch; }
-  .icon-btn {
-    flex: 0 0 48px; width:48px; height:48px; padding:0; border-radius:12px;
-  }
+  .icon-btn { flex:0 0 48px; width:48px; height:48px; padding:0; border-radius:12px; }
   .icon-btn svg { width:22px; height:22px; }
 
-  input[type="range"] { width:100%; accent-color: var(--accent); }
+  input[type="range"] { width:100%; accent-color:var(--accent); }
   .slider-row { display:flex; flex-direction:column; gap:6px; }
   .slider-row .control-row .label { margin:0; }
   .value-display { font-size:13px; color:var(--accent); }
@@ -131,43 +178,77 @@
   .slider-with-buttons input[type="range"] { flex:1; }
   .step-btn {
     background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
-    border-radius:6px; width:32px; height:32px; font-size:18px; line-height:1; cursor:pointer;
+    border-radius:6px; width:32px; height:32px; font-size:18px; cursor:pointer;
     display:flex; align-items:center; justify-content:center; flex-shrink:0; user-select:none;
   }
-  .step-btn:active { border-color: var(--accent); color: var(--accent); }
+  .step-btn:active { border-color:var(--accent); color:var(--accent); }
 
   .select-input {
     background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
     border-radius:8px; padding:10px; font-size:14px; outline:none; width:100%;
   }
-  .select-input:focus { border-color: var(--accent); }
+  .select-input:focus { border-color:var(--accent); }
 
   hr.divider { border:none; border-top:1px solid var(--border); margin:4px 0; }
+
+  /* Bottom status bar */
+  #statusBar {
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  #sideStatus { font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); font-weight:600; }
+  #persistentCode {
+    font-family:"SF Mono","Courier New",monospace; font-size:12px; color:var(--accent);
+    border:1px solid var(--border); border-radius:6px; padding:3px 8px; letter-spacing:0.1em;
+  }
+  #statusBar .action-btns { display:flex; gap:8px; margin-left:auto; }
+  .small-btn {
+    background:none; border:1px solid var(--border); color:var(--muted);
+    padding:6px 12px; border-radius:6px; font-size:12px; cursor:pointer;
+  }
+  .small-btn:hover { border-color:var(--accent); color:var(--accent); }
 </style>
 </head>
 <body>
 
   <div id="connectionPanel">
     <h1>Teleprompter Control</h1>
-    <p>On the prompter, tap the status badge in the corner and enter this code to connect, edit the script live, and adjust every setting remotely.</p>
+    <p>Scan the QR code with the prompter device, or enter this code manually in the prompter app.</p>
+    <div id="qrBox"><div id="qrCanvas"></div></div>
     <div id="hostCode" class="mono">------</div>
-    <div id="connectionStatus">Waiting for the prompter to connect...</div>
+    <div id="connectionStatus">Generating session...</div>
     <button id="newCodeBtn">Generate new code</button>
   </div>
 
   <div id="mainPanel">
+    <div id="reconnectBanner">
+      <span>Prompter disconnected. Reconnect using code</span>
+      <span id="bannerCode" class="code-inline">------</span>
+      <button id="dismissBanner">Dismiss</button>
+    </div>
+
     <div id="editorPane">
       <div class="label">Script</div>
+      <div class="toolbar">
+        <button class="toolbar-btn" id="undoBtn" title="Undo (Ctrl+Z)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7v6h6"/><path d="M3 13C5.5 7.5 12 5 17 8.5s6 10 2 14"/>
+          </svg>
+        </button>
+        <button class="toolbar-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 7v6h-6"/><path d="M21 13C18.5 7.5 12 5 7 8.5S1 18.5 5 22.5"/>
+          </svg>
+        </button>
+      </div>
       <div id="editorRow">
         <div id="editorStack">
           <div id="highlightLayer" aria-hidden="true"></div>
           <textarea id="textArea" spellcheck="false" placeholder="Type the script here. It updates on the prompter as you type."></textarea>
         </div>
-        <div id="scrubberTrack">
-          <div id="scrubberThumb"></div>
-        </div>
+        <div id="scrubberTrack"><div id="scrubberThumb"></div></div>
       </div>
     </div>
+
     <div id="sidePane">
       <div class="label">Live preview</div>
       <div id="monitor">
@@ -176,15 +257,17 @@
         </div>
       </div>
 
+      <div id="sentenceIndicator"></div>
+
       <hr class="divider">
 
       <div class="btn-row">
         <button class="btn" id="playBtn">Play</button>
         <button class="btn" id="resetBtn">Restart</button>
-        <button class="btn icon-btn" id="mirrorHBtn" title="Flip horizontal" aria-label="Flip horizontal">
+        <button class="btn icon-btn" id="mirrorHBtn" title="Flip horizontal">
           <svg viewBox="0 0 24 24" fill="currentColor"><rect x="11" y="2" width="2" height="20" opacity="0.4"/><path d="M3 12l5-4.5v9z"/><path d="M21 12l-5-4.5v9z"/></svg>
         </button>
-        <button class="btn icon-btn" id="mirrorVBtn" title="Flip vertical" aria-label="Flip vertical">
+        <button class="btn icon-btn" id="mirrorVBtn" title="Flip vertical">
           <svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="11" width="20" height="2" opacity="0.4"/><path d="M12 3l4.5 5h-9z"/><path d="M12 21l4.5-5h-9z"/></svg>
         </button>
       </div>
@@ -214,21 +297,30 @@
       </div>
 
       <div class="slider-row">
-        <div class="control-row">
-          <span class="label">Font</span>
-        </div>
+        <div class="control-row"><span class="label">Font</span></div>
         <select id="fontFamilySelect" class="select-input"></select>
       </div>
 
       <hr class="divider">
-      <div class="control-row">
-        <div id="sideStatus" class="label">CONNECTED</div>
-        <div class="btn-row" style="flex:0 0 auto; gap:8px;">
-          <button class="btn" id="copyBtn" style="flex:0 0 auto; padding:8px 14px;">Copy</button>
-          <button class="btn" id="exportBtn" style="flex:0 0 auto; padding:8px 14px;">Export .md</button>
+
+      <div id="statusBar">
+        <div id="sideStatus">CONNECTED</div>
+        <span id="persistentCode">------</span>
+        <div class="action-btns">
+          <button class="small-btn" id="copyBtn">Copy</button>
+          <button class="small-btn" id="exportBtn">Export .md</button>
         </div>
       </div>
     </div>
+  </div>
+
+  <div id="restoreToast">
+    <div>
+      <div style="font-size:14px;">Restore autosaved script?</div>
+      <div id="savedTime" class="saved-time"></div>
+    </div>
+    <button class="toast-btn" id="restoreBtn">Restore</button>
+    <button class="toast-btn secondary" id="dismissRestoreBtn">Discard</button>
   </div>
 
 <script>
@@ -237,9 +329,20 @@
   const hostCode = document.getElementById('hostCode');
   const connectionStatus = document.getElementById('connectionStatus');
   const newCodeBtn = document.getElementById('newCodeBtn');
+  const qrCanvas = document.getElementById('qrCanvas');
+  const reconnectBanner = document.getElementById('reconnectBanner');
+  const bannerCode = document.getElementById('bannerCode');
+  const dismissBanner = document.getElementById('dismissBanner');
+  const persistentCode = document.getElementById('persistentCode');
+  const restoreToast = document.getElementById('restoreToast');
+  const savedTimeEl = document.getElementById('savedTime');
+  const restoreBtn = document.getElementById('restoreBtn');
+  const dismissRestoreBtn = document.getElementById('dismissRestoreBtn');
 
   const highlightLayer = document.getElementById('highlightLayer');
   const textArea = document.getElementById('textArea');
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
   const scrubberTrack = document.getElementById('scrubberTrack');
   const scrubberThumb = document.getElementById('scrubberThumb');
   const exportBtn = document.getElementById('exportBtn');
@@ -262,8 +365,9 @@
   const monitor = document.getElementById('monitor');
   const previewBox = document.getElementById('previewBox');
   const previewText = document.getElementById('previewText');
+  const sentenceIndicator = document.getElementById('sentenceIndicator');
+  const sideStatus = document.getElementById('sideStatus');
 
-  // Font choices well suited to on-screen reading at speed
   const FONTS = {
     verdana:   { label: 'Verdana',               stack: 'Verdana, Geneva, sans-serif' },
     opensans:  { label: 'Open Sans',             stack: "'Open Sans', sans-serif" },
@@ -272,91 +376,169 @@
   };
   Object.entries(FONTS).forEach(([key, f]) => {
     const opt = document.createElement('option');
-    opt.value = key;
-    opt.textContent = f.label;
-    opt.style.fontFamily = f.stack;
+    opt.value = key; opt.textContent = f.label; opt.style.fontFamily = f.stack;
     fontFamilySelect.appendChild(opt);
   });
 
   let state = {
-    text: '',
-    fontSize: 48,
-    fontFamily: 'opensans',
-    scrollSpeed: 50,
-    mirroredH: false,
-    mirroredV: false,
-    playState: 'paused'
+    text: '', fontSize: 48, fontFamily: 'opensans',
+    scrollSpeed: 50, mirroredH: false, mirroredV: false, playState: 'paused'
   };
-  let scrollPct = 0;            // last known scroll position on the phone, 0-1
-  let phoneViewport = { width: 390, height: 844 }; // default until the phone reports its size
-  let previewScale = 1;         // preview px per phone px
-  let previewScrollPos = 0;     // float scrollTop for the preview (smooth, local)
+  let scrollPct = 0;
+  let phoneViewport = { width: 390, height: 844 };
+  let previewScale = 1;
+  let previewScrollPos = 0;
   let previewLastTime = null;
   let draggingScrubber = false;
   let dragOffset = 0;
   let textDebounce;
+  let autoSaveDebounce;
   let peer = null;
   let conn = null;
   let code = generateCode();
+  let sentenceStarts = [];
+  let currentSentenceIdx = 0;
+
+  const AUTOSAVE_KEY = 'tp_autosave';
+  const AUTOSAVE_DELAY = 15000;
+  const WHEEL_SENSITIVITY = 0.6;
 
   function generateCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
+  // ---- QR Code ----
+  function buildPrompterUrl(c) {
+    const base = window.location.href.replace(/control\.html.*$/, '');
+    return base + 'prompter.html?code=' + c;
+  }
+
+  let qrInstance = null;
+  function renderQr(c) {
+    qrCanvas.innerHTML = '';
+    try {
+      qrInstance = new QRCode(qrCanvas, {
+        text: buildPrompterUrl(c),
+        width: 180, height: 180,
+        colorDark: '#000', colorLight: '#fff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } catch(e) { qrCanvas.textContent = 'QR unavailable'; }
+  }
+
+  // ---- Autosave ----
+  function autosave(text) {
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ text, savedAt: Date.now() }));
+    } catch(e) {}
+  }
+
+  function loadAutosave() {
+    try {
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch(e) { return null; }
+  }
+
+  function checkAndOfferRestore() {
+    const saved = loadAutosave();
+    if (!saved || !saved.text || saved.text === state.text) return;
+    const d = new Date(saved.savedAt);
+    savedTimeEl.textContent = 'Saved ' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    restoreToast.classList.add('visible');
+  }
+
+  restoreBtn.onclick = () => {
+    const saved = loadAutosave();
+    if (saved && saved.text) {
+      textArea.value = saved.text;
+      sendUpdate('text', saved.text);
+    }
+    restoreToast.classList.remove('visible');
+  };
+  dismissRestoreBtn.onclick = () => restoreToast.classList.remove('visible');
+
+  // ---- Sentence navigation ----
+  function buildSentenceStarts(text) {
+    const starts = [0];
+    const re = /[.!?]\s+|\n{2,}/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const idx = m.index + m[0].length;
+      if (idx < text.length && /\S/.test(text[idx])) starts.push(idx);
+    }
+    return starts;
+  }
+
+  function updateSentenceIndicator() {
+    if (!sentenceStarts.length) return;
+    sentenceIndicator.textContent = 'Sentence ' + (currentSentenceIdx + 1) + ' / ' + sentenceStarts.length;
+  }
+
+  function getSentenceIdxFromScrollPct() {
+    const total = state.text.length || 1;
+    const { startChar } = getHighlightRange();
+    let best = 0;
+    for (let i = 0; i < sentenceStarts.length; i++) {
+      if (sentenceStarts[i] <= startChar) best = i; else break;
+    }
+    return best;
+  }
+
+  function jumpToSentence(idx) {
+    if (!sentenceStarts.length) return;
+    idx = Math.max(0, Math.min(idx, sentenceStarts.length - 1));
+    currentSentenceIdx = idx;
+    const charIdx = sentenceStarts[idx];
+    const pct = scrollPctFromCharIndex(charIdx);
+    scrollPct = pct;
+    sendUpdate('seek', pct);
+    correctPreviewScroll(pct);
+    renderHighlight();
+    updateScrubber();
+    updateSentenceIndicator();
+    const total = state.text.length || 1;
+    textArea.scrollTop = (charIdx / total) * textArea.scrollHeight;
+    highlightLayer.scrollTop = textArea.scrollTop;
+  }
+
   // ---- Rendering ----
   function renderControls() {
-    if (document.activeElement !== textArea) {
-      textArea.value = state.text;
-    }
-    if (document.activeElement !== fontSizeSlider) {
-      fontSizeSlider.value = state.fontSize;
-    }
+    if (document.activeElement !== textArea) textArea.value = state.text;
+    if (document.activeElement !== fontSizeSlider) fontSizeSlider.value = state.fontSize;
     fontSizeValue.textContent = state.fontSize + 'px';
-
-    if (document.activeElement !== speedSlider) {
-      speedSlider.value = state.scrollSpeed;
-    }
+    if (document.activeElement !== speedSlider) speedSlider.value = state.scrollSpeed;
     speedValue.textContent = state.scrollSpeed;
-
-    if (document.activeElement !== fontFamilySelect) {
-      fontFamilySelect.value = state.fontFamily;
-    }
+    if (document.activeElement !== fontFamilySelect) fontFamilySelect.value = state.fontFamily;
     fontFamilySelect.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
-
     mirrorHBtn.classList.toggle('active', state.mirroredH);
     mirrorVBtn.classList.toggle('active', state.mirroredV);
     playBtn.textContent = state.playState === 'playing' ? 'Pause' : 'Play';
     playBtn.classList.toggle('active', state.playState === 'playing');
-
     previewText.textContent = state.text;
     previewText.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
-
+    sentenceStarts = buildSentenceStarts(state.text);
     updateMonitorScale();
     renderHighlight();
     updateScrubber();
+    updateSentenceIndicator();
   }
 
   // ---- To-scale preview ----
-  // The monitor's pixel size is computed directly so it always matches the
-  // phone's aspect ratio exactly (CSS aspect-ratio + max-height + width:100%
-  // can disagree and silently break the proportions).
   function updateMonitorScale() {
     const cs = getComputedStyle(sidePane);
     const availableWidth = sidePane.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const ratio = phoneViewport.width / phoneViewport.height; // width:height
+    const ratio = phoneViewport.width / phoneViewport.height;
     let h = Math.min(280, availableWidth / ratio);
     let w = h * ratio;
-    if (w > availableWidth) {
-      w = availableWidth;
-      h = w / ratio;
-    }
+    if (w > availableWidth) { w = availableWidth; h = w / ratio; }
     monitor.style.width = w + 'px';
     monitor.style.height = h + 'px';
     previewScale = phoneViewport.width > 0 ? w / phoneViewport.width : 1;
     previewText.style.fontSize = (state.fontSize * previewScale) + 'px';
   }
 
-  // Smooth local scroll animation, periodically corrected by the phone's actual position
   function previewTick(ts) {
     if (state.playState === 'playing' && !draggingPreview) {
       if (previewLastTime !== null) {
@@ -366,9 +548,7 @@
         previewBox.scrollTop = previewScrollPos;
       }
       previewLastTime = ts;
-    } else {
-      previewLastTime = null;
-    }
+    } else { previewLastTime = null; }
     requestAnimationFrame(previewTick);
   }
   requestAnimationFrame(previewTick);
@@ -377,16 +557,11 @@
     const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
     const target = pct * max;
     const diff = target - previewScrollPos;
-    // Snap on big jumps (reset, seek, text edits), gently nudge for normal drift
     previewScrollPos = Math.abs(diff) > 40 ? target : previewScrollPos + diff * 0.25;
     previewBox.scrollTop = previewScrollPos;
   }
 
-  // Wheel-based scrubbing accumulates continuously in preview pixels, so even
-  // tiny scroll deltas (trackpads) always have an effect. Converting each event
-  // through a rounded character index (like the scrubber drag does) creates a
-  // dead zone: small deltas round to the same character and never add up.
-  const WHEEL_SENSITIVITY = 0.6;
+  const WHEEL_SENSITIVITY_VAL = 0.6;
   function scrubByPreviewPixels(deltaPx) {
     const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
     if (max <= 0) return;
@@ -396,15 +571,15 @@
     sendUpdate('seek', scrollPct);
     renderHighlight();
     updateScrubber();
-
+    currentSentenceIdx = getSentenceIdxFromScrollPct();
+    updateSentenceIndicator();
     const { startChar } = getHighlightRange();
     const total = state.text.length || 1;
     textArea.scrollTop = (startChar / total) * textArea.scrollHeight;
     highlightLayer.scrollTop = textArea.scrollTop;
   }
 
-  // Drag up/down on the live preview to scrub the prompter position.
-  // 1:1 with the cursor, so whatever is under the pointer stays under it.
+  // ---- Preview drag (1:1) ----
   let draggingPreview = false;
   let previewDragStartY = 0;
   let previewDragStartScroll = 0;
@@ -418,32 +593,20 @@
   });
   previewBox.addEventListener('pointermove', e => {
     if (!draggingPreview) return;
-    const deltaY = e.clientY - previewDragStartY;
-    const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
-    previewScrollPos = Math.max(0, Math.min(previewDragStartScroll - deltaY, max));
-    previewBox.scrollTop = previewScrollPos;
-    const pct = max > 0 ? previewScrollPos / max : 0;
-    scrollPct = pct;
-    sendUpdate('seek', pct);
-    renderHighlight();
-    updateScrubber();
+    scrubByPreviewPixels(-(e.clientY - previewDragStartY));
+    previewDragStartY = e.clientY;
+    previewDragStartScroll = previewScrollPos;
   });
-  function endPreviewDrag() {
-    draggingPreview = false;
-    previewBox.classList.remove('dragging');
-  }
+  function endPreviewDrag() { draggingPreview = false; previewBox.classList.remove('dragging'); }
   previewBox.addEventListener('pointerup', endPreviewDrag);
   previewBox.addEventListener('pointercancel', endPreviewDrag);
 
-  // Scrolling over the live preview also scrubs the prompter position.
   previewBox.addEventListener('wheel', e => {
     e.preventDefault();
-    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY);
+    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY_VAL);
   }, { passive: false });
 
-  // ---- Map between scroll position and the script text, using the actual
-  // rendered preview (it's a to-scale replica of the prompter) rather than
-  // an estimate. This is accurate down to which characters are on-screen.
+  // ---- DOM-based highlight (reads from preview's rendered layout) ----
   function getTextNode() {
     const node = previewText.firstChild;
     return (node && node.nodeType === Node.TEXT_NODE && node.length) ? node : null;
@@ -454,9 +617,7 @@
       const range = document.caretRangeFromPoint(x, y);
       if (range) {
         if (range.startContainer === textNode) return range.startOffset;
-        if (range.startContainer === previewText) {
-          return range.startOffset === 0 ? 0 : textNode.length;
-        }
+        if (range.startContainer === previewText) return range.startOffset === 0 ? 0 : textNode.length;
       }
     } else if (document.caretPositionFromPoint) {
       const pos = document.caretPositionFromPoint(x, y);
@@ -468,91 +629,73 @@
     return null;
   }
 
-  // ---- Highlight the text currently shown on the phone ----
-  function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  // The prompter wraps line by line and only shows whole words, so read the
-  // actual visible character range from the preview's rendered layout, then
-  // snap to whole words (a word is either fully visible or not at all).
   function getHighlightRange() {
     const text = state.text;
     const textNode = getTextNode();
     if (!textNode || !text.length) return { startChar: 0, endChar: 0 };
-
     const rect = previewBox.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return { startChar: 0, endChar: 0 };
-
     const x = rect.left + 2;
     let startChar = caretOffsetAt(x, rect.top + 1, textNode);
     let endChar = caretOffsetAt(x, rect.bottom - 1, textNode);
     if (startChar === null) startChar = 0;
     if (endChar === null) endChar = text.length;
-    if (endChar < startChar) { const tmp = startChar; startChar = endChar; endChar = tmp; }
-
+    if (endChar < startChar) { const t = startChar; startChar = endChar; endChar = t; }
     while (startChar > 0 && /\S/.test(text[startChar - 1]) && /\S/.test(text[startChar])) startChar--;
     while (endChar < text.length && endChar > 0 && /\S/.test(text[endChar - 1]) && /\S/.test(text[endChar])) endChar++;
-
     return { startChar, endChar };
   }
 
-  // Convert a target character index into a scroll fraction by measuring where
-  // that character actually renders in the to-scale preview.
-  function scrollPctFromCharIndex(charIndex) {
+  function scrollPctFromCharIndex(charIdx) {
     const textNode = getTextNode();
     const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
     if (!textNode || max <= 0) return 0;
-
-    charIndex = Math.max(0, Math.min(charIndex, textNode.length));
+    charIdx = Math.max(0, Math.min(charIdx, textNode.length));
     const range = document.createRange();
-    if (charIndex >= textNode.length) {
+    if (charIdx >= textNode.length) {
       range.setStart(textNode, Math.max(0, textNode.length - 1));
       range.setEnd(textNode, textNode.length);
     } else {
-      range.setStart(textNode, charIndex);
-      range.setEnd(textNode, charIndex + 1);
+      range.setStart(textNode, charIdx);
+      range.setEnd(textNode, charIdx + 1);
     }
     const rects = range.getClientRects();
     if (!rects.length) return scrollPct;
-
     const boxRect = previewBox.getBoundingClientRect();
     const charTop = (rects[0].top - boxRect.top) + previewBox.scrollTop;
     return Math.max(0, Math.min(1, charTop / max));
   }
 
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
 
   function renderHighlight() {
     const text = state.text;
     const { startChar, endChar } = getHighlightRange();
-
     const before = escapeHtml(text.slice(0, startChar));
     const mid = escapeHtml(text.slice(startChar, endChar));
     const after = escapeHtml(text.slice(endChar));
-
     highlightLayer.innerHTML = before + (mid ? '<span class="highlight-span">' + mid + '</span>' : '') + after;
     highlightLayer.scrollTop = textArea.scrollTop;
   }
 
-  textArea.addEventListener('scroll', () => {
-    highlightLayer.scrollTop = textArea.scrollTop;
-  });
+  textArea.addEventListener('scroll', () => { highlightLayer.scrollTop = textArea.scrollTop; });
 
-  // Scrolling over the script editor also scrubs the prompter position.
   textArea.addEventListener('wheel', e => {
     e.preventDefault();
-    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY);
+    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY_VAL);
   }, { passive: false });
 
-  // ---- Scrubber: drag (or scroll) to jump to any point in the script ----
+  // ---- Scrubber ----
   function thumbGeometry() {
     const trackHeight = scrubberTrack.clientHeight;
     const total = state.text.length || 1;
     const { startChar, endChar } = getHighlightRange();
-    const startCharFrac = startChar / total;
-    const endCharFrac = endChar / total;
-    let thumbTop = startCharFrac * trackHeight;
-    let thumbHeight = Math.max(24, (endCharFrac - startCharFrac) * trackHeight);
+    const startF = startChar / total;
+    const endF = endChar / total;
+    let thumbTop = startF * trackHeight;
+    let thumbHeight = Math.max(24, (endF - startF) * trackHeight);
     if (thumbTop + thumbHeight > trackHeight) thumbTop = trackHeight - thumbHeight;
     if (thumbTop < 0) thumbTop = 0;
     return { trackHeight, thumbHeight, thumbTop };
@@ -567,19 +710,17 @@
   function setScrollPctFromThumbTop(thumbTop) {
     const { trackHeight, thumbHeight } = thumbGeometry();
     thumbTop = Math.max(0, Math.min(thumbTop, trackHeight - thumbHeight));
-    const charFrac = trackHeight > 0 ? thumbTop / trackHeight : 0;
-    const total = state.text.length || 1;
-    const pct = scrollPctFromCharIndex(Math.round(charFrac * total));
-
+    const charF = trackHeight > 0 ? thumbTop / trackHeight : 0;
+    const pct = scrollPctFromCharIndex(Math.round(charF * (state.text.length || 1)));
     scrollPct = pct;
     sendUpdate('seek', pct);
     correctPreviewScroll(pct);
     renderHighlight();
     updateScrubber();
-
-    // Bring the corresponding text into view in the editor
-    textArea.scrollTop = charFrac * textArea.scrollHeight;
+    textArea.scrollTop = charF * textArea.scrollHeight;
     highlightLayer.scrollTop = textArea.scrollTop;
+    currentSentenceIdx = getSentenceIdxFromScrollPct();
+    updateSentenceIndicator();
   }
 
   scrubberThumb.addEventListener('pointerdown', e => {
@@ -591,23 +732,18 @@
   });
   scrubberThumb.addEventListener('pointermove', e => {
     if (!draggingScrubber) return;
-    const top = e.clientY - scrubberTrack.getBoundingClientRect().top - dragOffset;
-    setScrollPctFromThumbTop(top);
+    setScrollPctFromThumbTop(e.clientY - scrubberTrack.getBoundingClientRect().top - dragOffset);
   });
   scrubberThumb.addEventListener('pointerup', () => { draggingScrubber = false; });
   scrubberThumb.addEventListener('pointercancel', () => { draggingScrubber = false; });
-
   scrubberTrack.addEventListener('pointerdown', e => {
     if (e.target === scrubberThumb) return;
     const { thumbHeight } = thumbGeometry();
-    const top = e.clientY - scrubberTrack.getBoundingClientRect().top - thumbHeight / 2;
-    setScrollPctFromThumbTop(top);
+    setScrollPctFromThumbTop(e.clientY - scrubberTrack.getBoundingClientRect().top - thumbHeight / 2);
   });
-
-  // Mouse wheel over the scrubber: same continuous scrubbing
   scrubberTrack.addEventListener('wheel', e => {
     e.preventDefault();
-    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY);
+    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY_VAL);
   }, { passive: false });
 
   // ---- Outgoing updates ----
@@ -618,147 +754,171 @@
   playBtn.onclick = () => sendUpdate('playState', state.playState === 'playing' ? 'paused' : 'playing');
   resetBtn.onclick = () => {
     sendUpdate('reset', true);
-    scrollPct = 0;
-    previewScrollPos = 0;
-    previewBox.scrollTop = 0;
-    renderHighlight();
-    updateScrubber();
+    scrollPct = 0; previewScrollPos = 0; previewBox.scrollTop = 0;
+    currentSentenceIdx = 0;
+    renderHighlight(); updateScrubber(); updateSentenceIndicator();
   };
   mirrorHBtn.onclick = () => sendUpdate('mirroredH', !state.mirroredH);
   mirrorVBtn.onclick = () => sendUpdate('mirroredV', !state.mirroredV);
   fontFamilySelect.onchange = () => sendUpdate('fontFamily', fontFamilySelect.value);
 
-  exportBtn.onclick = () => {
-    const blob = new Blob([state.text], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'script.md';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  copyBtn.onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(state.text);
-      const original = copyBtn.textContent;
-      copyBtn.textContent = 'Copied';
-      setTimeout(() => { copyBtn.textContent = original; }, 1200);
-    } catch (e) {
-      copyBtn.textContent = 'Failed';
-      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200);
-    }
-  };
-
   function stepFont(delta) {
     const val = Math.max(20, Math.min(200, parseInt(fontSizeSlider.value, 10) + delta));
-    fontSizeSlider.value = val;
-    fontSizeValue.textContent = val + 'px';
+    fontSizeSlider.value = val; fontSizeValue.textContent = val + 'px';
     sendUpdate('fontSize', val);
   }
   function stepSpeed(delta) {
     const val = Math.max(0, Math.min(400, parseInt(speedSlider.value, 10) + delta));
-    speedSlider.value = val;
-    speedValue.textContent = val;
+    speedSlider.value = val; speedValue.textContent = val;
     sendUpdate('scrollSpeed', val);
   }
-
-  fontIncBtn.onclick = () => stepFont(2);
-  fontDecBtn.onclick = () => stepFont(-2);
-  speedIncBtn.onclick = () => stepSpeed(5);
-  speedDecBtn.onclick = () => stepSpeed(-5);
-
-  fontSizeSlider.oninput = () => {
-    fontSizeValue.textContent = fontSizeSlider.value + 'px';
-    sendUpdate('fontSize', parseInt(fontSizeSlider.value, 10));
-  };
-  speedSlider.oninput = () => {
-    speedValue.textContent = speedSlider.value;
-    sendUpdate('scrollSpeed', parseInt(speedSlider.value, 10));
-  };
+  fontIncBtn.onclick = () => stepFont(2); fontDecBtn.onclick = () => stepFont(-2);
+  speedIncBtn.onclick = () => stepSpeed(5); speedDecBtn.onclick = () => stepSpeed(-5);
+  fontSizeSlider.oninput = () => { fontSizeValue.textContent = fontSizeSlider.value + 'px'; sendUpdate('fontSize', parseInt(fontSizeSlider.value, 10)); };
+  speedSlider.oninput = () => { speedValue.textContent = speedSlider.value; sendUpdate('scrollSpeed', parseInt(speedSlider.value, 10)); };
 
   textArea.oninput = () => {
     clearTimeout(textDebounce);
     const value = textArea.value;
     textDebounce = setTimeout(() => sendUpdate('text', value), 250);
     renderHighlight();
+    sentenceStarts = buildSentenceStarts(value);
+    clearTimeout(autoSaveDebounce);
+    autoSaveDebounce = setTimeout(() => autosave(value), AUTOSAVE_DELAY);
   };
 
-  // Spacebar toggles play/pause, unless the script editor has focus
+  // ---- Undo/Redo ----
+  undoBtn.onclick = () => { textArea.focus(); document.execCommand('undo'); };
+  redoBtn.onclick = () => { textArea.focus(); document.execCommand('redo'); };
+
+  // ---- Keyboard shortcuts ----
   document.addEventListener('keydown', e => {
-    if ((e.code === 'Space' || e.key === ' ') && document.activeElement !== textArea) {
+    const inEditor = document.activeElement === textArea;
+
+    // Spacebar: play/pause when not in editor
+    if ((e.code === 'Space' || e.key === ' ') && !inEditor) {
       e.preventDefault();
       sendUpdate('playState', state.playState === 'playing' ? 'paused' : 'playing');
+      return;
+    }
+
+    // Redo: Ctrl+Shift+Z or Ctrl+Y (when in editor the browser handles Ctrl+Z natively)
+    if (!inEditor && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+      textArea.focus(); document.execCommand('redo'); textArea.blur(); return;
+    }
+
+    // Arrow up/down: jump between sentences when editor not focused
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !inEditor) {
+      e.preventDefault();
+      jumpToSentence(e.key === 'ArrowDown' ? currentSentenceIdx + 1 : currentSentenceIdx - 1);
     }
   });
+
+  // ---- Export / Copy ----
+  exportBtn.onclick = () => {
+    const blob = new Blob([state.text], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'script.md';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+  copyBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(state.text);
+      const orig = copyBtn.textContent; copyBtn.textContent = 'Copied';
+      setTimeout(() => { copyBtn.textContent = orig; }, 1200);
+    } catch(e) { copyBtn.textContent = 'Failed'; setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200); }
+  };
 
   // ---- Incoming data ----
   function handleData(msg) {
     if (msg.type === 'state') {
       state = msg.data;
+      sentenceStarts = buildSentenceStarts(state.text);
       renderControls();
     } else if (msg.type === 'scroll') {
       scrollPct = msg.position;
       if (!draggingPreview) correctPreviewScroll(scrollPct);
       renderHighlight();
       updateScrubber();
+      currentSentenceIdx = getSentenceIdxFromScrollPct();
+      updateSentenceIndicator();
     } else if (msg.type === 'viewport') {
       phoneViewport = { width: msg.width, height: msg.height };
       updateMonitorScale();
     }
   }
 
-  window.addEventListener('resize', () => {
-    updateMonitorScale();
-    updateScrubber();
-  });
+  window.addEventListener('resize', () => { updateMonitorScale(); updateScrubber(); });
+  dismissBanner.onclick = () => reconnectBanner.classList.remove('visible');
 
-  // ---- Host the session: generate a code and wait for the prompter ----
+  // ---- Host the session ----
+  function applyCode(c) {
+    code = c;
+    hostCode.textContent = c;
+    bannerCode.textContent = c;
+    persistentCode.textContent = c;
+    renderQr(c);
+  }
+
   function startHost() {
     peer = new Peer('tp-' + code);
-
     peer.on('open', () => {
-      hostCode.textContent = code;
+      applyCode(code);
+      connectionStatus.textContent = 'Waiting for the prompter to connect...';
     });
-
     peer.on('connection', c => {
       conn = c;
       conn.on('open', () => {
+        reconnectBanner.classList.remove('visible');
         connectionPanel.classList.add('hidden');
         mainPanel.classList.add('visible');
-        updateMonitorScale();
-        updateScrubber();
+        updateMonitorScale(); updateScrubber();
       });
       conn.on('data', handleData);
       conn.on('close', () => {
         conn = null;
-        mainPanel.classList.remove('visible');
-        connectionPanel.classList.remove('hidden');
-        connectionStatus.textContent = 'Prompter disconnected. Waiting for it to reconnect...';
+        sideStatus.textContent = 'DISCONNECTED';
+        reconnectBanner.classList.add('visible');
+        // Don't reset the main panel — keep the script and state intact
       });
     });
-
     peer.on('error', err => {
       if (err.type === 'unavailable-id') {
-        code = generateCode();
-        peer.destroy();
-        startHost();
-      } else {
-        connectionStatus.textContent = 'Error: ' + err.type;
-      }
+        code = generateCode(); peer.destroy(); startHost();
+      } else { connectionStatus.textContent = 'Error: ' + err.type; }
     });
   }
-  startHost();
+
+  // When the prompter reconnects, restore connected status
+  peer === null && startHost();
+
+  // Watch for new connections even when main panel is up (handles reconnects)
+  setInterval(() => {
+    if (peer && !conn) {
+      peer.on('connection', c => {
+        conn = c;
+        conn.on('open', () => {
+          sideStatus.textContent = 'CONNECTED';
+          reconnectBanner.classList.remove('visible');
+          if (state.text) conn.send({ type: 'state', data: state });
+        });
+        conn.on('data', handleData);
+        conn.on('close', () => { conn = null; sideStatus.textContent = 'DISCONNECTED'; reconnectBanner.classList.add('visible'); });
+      });
+    }
+  }, 2000);
 
   newCodeBtn.onclick = () => {
-    if (peer) peer.destroy();
-    conn = null;
+    if (peer) peer.destroy(); conn = null;
     code = generateCode();
-    connectionStatus.textContent = 'Waiting for the prompter to connect...';
+    connectionStatus.textContent = 'Generating session...';
     startHost();
   };
+
+  // ---- Offer to restore autosaved script ----
+  checkAndOfferRestore();
 </script>
 </body>
 </html>

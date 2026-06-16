@@ -396,7 +396,18 @@
     }
   };
 
-  // ---- Keep screen awake while in use ----
+  // ---- Auto-connect if ?code= is in the URL (e.g. opened via QR code) ----
+  (function autoConnect() {
+    const params = new URLSearchParams(window.location.search);
+    const urlCode = params.get('code');
+    if (urlCode && /^\d{6}$/.test(urlCode)) {
+      codeInput.value = urlCode;
+      // Small delay so PeerJS has time to initialise before we call connect
+      setTimeout(() => connectBtn.click(), 600);
+    } else {
+      connectOverlay.classList.remove('hidden');
+    }
+  })();
   let wakeLock = null;
   async function requestWakeLock() {
     try {
