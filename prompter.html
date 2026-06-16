@@ -7,7 +7,14 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#000000">
-<link rel="manifest" href="manifest.json">
+<script>
+  // Manifest only works over HTTP/HTTPS — skip on file:// to avoid console errors
+  if (location.protocol !== 'file:') {
+    const l = document.createElement('link');
+    l.rel = 'manifest'; l.href = 'manifest.json';
+    document.head.appendChild(l);
+  }
+</script>
 <title>Teleprompter</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
