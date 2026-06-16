@@ -6,954 +6,1161 @@
 <title>Teleprompter Control</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0a0a0a;
-    --panel: #141414;
-    --panel-2: #1a1a1a;
-    --text-color: #f0f0f0;
-    --muted: #8a8a8a;
-    --accent: #ffc800;
-    --border: #2a2a2a;
-  }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html, body {
-    height:100%; background:var(--bg); color:var(--text-color);
-    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-  }
-  .mono { font-family: "SF Mono", "Courier New", monospace; }
+:root {
+  --bg: #0a0a0a; --panel: #141414; --panel-2: #1a1a1a;
+  --text: #f0f0f0; --muted: #8a8a8a; --border: #2a2a2a;
+  --accent: #ffc800; --mode-color: #ffc800;
+  --editor-w: 56%;
+}
+.supervisor-mode { --accent: #698af1; --mode-color: #698af1; }
 
-  /* ---- Connection screen ---- */
-  #connectionPanel {
-    height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:20px; text-align:center; padding:24px;
-  }
-  #connectionPanel.hidden { display:none; }
-  #connectionPanel h1 { font-size:20px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); }
-  #connectionPanel p { color:var(--muted); font-size:14px; max-width:360px; line-height:1.5; }
-  #hostCode {
-    font-size:56px; letter-spacing:0.18em; text-align:center;
-    background:var(--panel); border:2px solid var(--accent); color:var(--accent);
-    border-radius:10px; padding:18px 28px; font-family:"SF Mono","Courier New",monospace;
-  }
-  #connectionStatus { color:var(--muted); font-size:13px; min-height:18px; }
-  #newCodeBtn {
-    background:none; border:1px solid var(--border); color:var(--text-color);
-    padding:10px 20px; border-radius:8px; font-size:14px; cursor:pointer;
-  }
-  #newCodeBtn:hover { border-color:var(--accent); color:var(--accent); }
-  #qrBox {
-    background:#fff; padding:12px; border-radius:10px; display:inline-block;
-  }
-  #qrBox canvas, #qrBox img { display:block; }
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,sans-serif;}
 
-  /* ---- Reconnect banner (shown when prompter drops while main panel is up) ---- */
-  #reconnectBanner {
-    display:none; position:absolute; top:0; left:0; right:0; z-index:20;
-    background:rgba(18,18,18,0.97); border-bottom:1px solid var(--accent);
-    padding:10px 20px; align-items:center; gap:14px; justify-content:center;
-  }
-  #reconnectBanner.visible { display:flex; }
-  #reconnectBanner span { font-size:13px; color:var(--muted); }
-  #reconnectBanner .code-inline {
-    font-family:"SF Mono","Courier New",monospace; color:var(--accent); font-size:15px;
-    letter-spacing:0.12em;
-  }
-  #dismissBanner {
-    background:none; border:1px solid var(--border); color:var(--text-color);
-    padding:5px 12px; border-radius:6px; font-size:13px; cursor:pointer; margin-left:auto;
-  }
+/* ---- Connection screen ---- */
+#connectionPanel{height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px;}
+#connectionPanel.hidden{display:none;}
+#connectionPanel h1{font-size:20px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);}
+#connectionPanel p{color:var(--muted);font-size:14px;max-width:360px;line-height:1.5;}
+#hostCode{font-size:52px;letter-spacing:.18em;background:var(--panel);border:2px solid var(--accent);color:var(--accent);border-radius:10px;padding:16px 24px;font-family:"SF Mono","Courier New",monospace;}
+#connectionStatus{color:var(--muted);font-size:13px;}
+.conn-btn{background:none;border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;}
+.conn-btn:hover{border-color:var(--accent);color:var(--accent);}
+.conn-btn.skip{border:none;color:var(--muted);font-size:13px;text-decoration:underline;padding:4px;}
 
-  /* ---- Restore saved script toast ---- */
-  #restoreToast {
-    display:none; position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:99;
-    background:var(--panel); border:1px solid var(--accent); border-radius:10px;
-    padding:14px 20px; align-items:center; gap:14px; box-shadow:0 4px 24px rgba(0,0,0,0.6);
-    white-space:nowrap;
-  }
-  #restoreToast.visible { display:flex; }
-  #restoreToast span { font-size:14px; color:var(--text-color); }
-  #restoreToast .saved-time { font-size:12px; color:var(--muted); }
-  .toast-btn {
-    background:var(--accent); color:#000; border:none; padding:8px 16px;
-    border-radius:7px; font-size:13px; font-weight:600; cursor:pointer;
-  }
-  .toast-btn.secondary {
-    background:none; border:1px solid var(--border); color:var(--muted); font-weight:400;
-  }
+/* ---- Reconnect banner ---- */
+#reconnectBanner{display:none;position:absolute;top:0;left:0;right:0;z-index:20;background:rgba(18,18,18,.97);border-bottom:1px solid var(--accent);padding:10px 20px;align-items:center;gap:14px;justify-content:center;}
+#reconnectBanner.visible{display:flex;}
+#reconnectBanner span{font-size:13px;color:var(--muted);}
+.code-inline{font-family:"SF Mono","Courier New",monospace;color:var(--accent);font-size:15px;letter-spacing:.12em;}
+#dismissBanner{background:none;border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:13px;cursor:pointer;margin-left:auto;}
 
-  /* ---- Main control screen ---- */
-  #mainPanel { display:none; height:100vh; position:relative; }
-  #mainPanel.visible { display:grid; grid-template-columns: 1.4fr 1fr; gap:1px; background:var(--border); }
-  @media (max-width: 800px) { #mainPanel.visible { grid-template-columns: 1fr; } }
+/* ---- Tab bar ---- */
+#tabBar{
+  display:none;height:36px;background:var(--panel);border-bottom:1px solid var(--border);
+  align-items:stretch;overflow-x:auto;scrollbar-width:none;flex-shrink:0;
+}
+#tabBar::-webkit-scrollbar{display:none;}
+#tabBar.visible{display:flex;}
+.tab{
+  display:flex;align-items:center;gap:6px;padding:0 14px;white-space:nowrap;
+  font-size:13px;color:var(--muted);border-right:1px solid var(--border);cursor:pointer;
+  border-bottom:2px solid transparent;transition:color .15s;min-width:0;
+  background:none;border-top:none;border-left:none;
+}
+.tab.active{color:var(--text);border-bottom-color:var(--mode-color);}
+.tab:hover:not(.active){color:var(--text);}
+.tab-name{max-width:120px;overflow:hidden;text-overflow:ellipsis;}
+.tab-close{color:var(--muted);font-size:15px;line-height:1;padding:0 2px;opacity:.5;}
+.tab-close:hover{opacity:1;}
+#addTabBtn{padding:0 14px;color:var(--muted);font-size:18px;cursor:pointer;background:none;border:none;flex-shrink:0;}
+#addTabBtn:hover{color:var(--accent);}
+.tab-session{display:flex;align-items:center;gap:8px;margin-left:auto;padding:0 12px;border-left:1px solid var(--border);}
+.tab-session button{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;white-space:nowrap;}
+.tab-session button:hover{border-color:var(--accent);color:var(--accent);}
+#fileInput{display:none;}
 
-  #editorPane, #sidePane { background:var(--bg); padding:20px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
-  #editorPane { overflow:hidden; }
+/* ---- Main panel ---- */
+#mainPanel{display:none;height:calc(100vh - 36px);position:relative;}
+#mainPanel.visible{display:flex;flex-direction:row;}
 
-  .label { font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); font-weight:600; }
+#editorPane{
+  flex:0 0 var(--editor-w);min-width:180px;overflow:hidden;
+  display:flex;flex-direction:column;gap:0;
+  border-right:2px solid var(--mode-color);transition:border-color .2s;
+}
+#dragHandle{
+  width:5px;background:var(--border);cursor:col-resize;flex-shrink:0;
+  transition:background .15s;z-index:5;
+}
+#dragHandle:hover,#dragHandle.dragging{background:var(--mode-color);}
+#sidePane{flex:1;min-width:180px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;}
 
-  /* Editor toolbar (undo/redo) */
-  .toolbar { display:flex; gap:6px; flex-shrink:0; }
-  .toolbar-btn {
-    background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
-    border-radius:6px; width:34px; height:34px; cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .toolbar-btn:hover { border-color:var(--accent); color:var(--accent); }
-  .toolbar-btn svg { width:16px; height:16px; }
+/* ---- Editor pane internals ---- */
+.pane-header{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;
+  border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);
+}
+.mode-toggle{display:flex;gap:4px;}
+.mode-btn{
+  background:none;border:1px solid var(--border);color:var(--muted);
+  padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;
+}
+.mode-btn.active{border-color:var(--mode-color);color:var(--mode-color);}
+#saveStatus{font-size:11px;color:var(--muted);margin-left:auto;}
 
-  /* Editor with highlight overlay + scrubber */
-  #editorRow { flex:1; display:flex; gap:10px; min-height:0; }
-  #editorStack { position:relative; flex:1; min-height:0; }
-  #highlightLayer, #textArea {
-    position:absolute; inset:0; margin:0; box-sizing:border-box;
-    padding:16px; font-size:16px; line-height:1.6;
-    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-    white-space:pre-wrap; word-wrap:break-word; overflow-y:auto; border-radius:8px;
-  }
-  #highlightLayer {
-    color:transparent; background:var(--panel); border:1px solid transparent;
-    pointer-events:none; z-index:1;
-  }
-  #textArea {
-    background:transparent; color:var(--text-color); border:1px solid var(--border);
-    resize:none; outline:none; z-index:2; caret-color:var(--accent);
-  }
-  #textArea:focus { border-color:var(--accent); }
+.toolbar{display:flex;gap:5px;padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;}
+.toolbar-btn{
+  background:var(--panel-2);color:var(--text);border:1px solid var(--border);
+  border-radius:6px;width:32px;height:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+}
+.toolbar-btn svg{width:15px;height:15px;}
+.toolbar-btn:hover{border-color:var(--accent);color:var(--accent);}
+.toolbar-sep{width:1px;background:var(--border);height:22px;margin:0 2px;flex-shrink:0;}
+.toolbar-btn.text{width:auto;padding:0 10px;font-size:12px;}
 
-  #scrubberTrack {
-    width:16px; background:var(--panel); border:1px solid var(--border); border-radius:8px;
-    position:relative; flex-shrink:0; cursor:pointer;
-  }
-  #scrubberThumb {
-    position:absolute; left:2px; right:2px; min-height:24px;
-    background:var(--accent); border-radius:6px; opacity:0.85; cursor:grab;
-  }
-  #scrubberThumb:active { cursor:grabbing; opacity:1; }
+/* Editor area */
+#editorArea{flex:1;display:flex;min-height:0;position:relative;}
+#editorStack{flex:1;position:relative;min-height:0;}
+#highlightLayer,#textArea{
+  position:absolute;inset:0;padding:16px;font-size:16px;line-height:1.6;
+  font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
+  white-space:pre-wrap;word-wrap:break-word;overflow-y:auto;border-radius:0;box-sizing:border-box;
+}
+#highlightLayer{color:transparent;background:var(--panel);border:1px solid transparent;pointer-events:none;z-index:1;}
+#textArea{background:transparent;color:var(--text);border:1px solid transparent;resize:none;outline:none;z-index:2;caret-color:var(--accent);}
+#textArea:focus{border-color:var(--accent);}
+.highlight-span{background:rgba(255,200,0,.75);border-radius:2px;}
+#scrubberTrack{width:14px;background:var(--panel);border-left:1px solid var(--border);position:relative;flex-shrink:0;cursor:pointer;}
+#scrubberThumb{position:absolute;left:2px;right:2px;min-height:24px;background:var(--accent);border-radius:5px;opacity:.85;cursor:grab;}
+#scrubberThumb:active{cursor:grabbing;opacity:1;}
 
-  /* Monitor */
-  #monitor {
-    background:#000; border:1px solid var(--border); border-radius:8px;
-    overflow:hidden; position:relative; margin:0 auto;
-  }
-  #previewBox {
-    width:100%; height:100%; overflow:hidden; position:relative;
-    container-type:size; cursor:grab; touch-action:none;
-    user-select:none; -webkit-user-select:none;
-  }
-  #previewBox.dragging { cursor:grabbing; }
-  #previewText {
-    color:#fff; padding:60cqh 6cqw; white-space:pre-wrap; word-wrap:break-word; line-height:1.5;
-    user-select:none; -webkit-user-select:none;
-  }
-  .highlight-span { background:rgba(255,200,0,0.75); border-radius:2px; }
+/* ---- Supervisor view ---- */
+#supervisorView{flex:1;overflow-y:auto;padding:12px;display:none;flex-direction:column;gap:2px;}
+#supervisorView.active{display:flex;}
+.sv-section{border-radius:8px;overflow:hidden;border:1px solid transparent;}
+.sv-section:hover{border-color:var(--border);}
+.sv-main{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;cursor:pointer;}
+.sv-main:hover .sv-text{color:var(--text);}
+.sv-check{
+  width:16px;height:16px;flex-shrink:0;margin-top:3px;cursor:pointer;
+  accent-color:var(--mode-color);
+}
+.sv-text{font-size:14px;line-height:1.55;color:var(--muted);flex:1;transition:color .15s;}
+.sv-section.done .sv-text{text-decoration:line-through;opacity:.45;}
+.sv-note-area{padding:0 12px 10px 38px;display:flex;flex-direction:column;gap:6px;}
+.sv-note{font-size:12px;color:var(--muted);background:var(--panel-2);border-radius:6px;padding:6px 10px;border-left:2px solid var(--mode-color);cursor:pointer;}
+.sv-note-input{
+  font-size:12px;color:var(--text);background:var(--panel-2);border-radius:6px;
+  padding:6px 10px;border:1px solid var(--mode-color);resize:none;outline:none;
+  font-family:inherit;line-height:1.5;width:100%;
+}
+.sv-add-note{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:0;text-align:left;}
+.sv-add-note:hover{color:var(--mode-color);}
+.sv-section-num{font-size:10px;color:var(--muted);opacity:.5;flex-shrink:0;min-width:20px;text-align:right;margin-top:5px;}
 
-  /* Sentence position indicator - removed */
+/* ---- Side pane ---- */
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;}
+#monitor{background:#000;border:1px solid var(--border);border-radius:8px;overflow:hidden;position:relative;margin:0 auto;}
+#previewBox{width:100%;height:100%;overflow:hidden;position:relative;container-type:size;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;}
+#previewBox.dragging{cursor:grabbing;}
+#previewText{color:#fff;padding:60cqh 6cqw;white-space:pre-wrap;word-wrap:break-word;line-height:1.5;user-select:none;}
+.divider{border:none;border-top:1px solid var(--border);margin:2px 0;}
+.btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:14px;cursor:pointer;flex:1;display:flex;align-items:center;justify-content:center;}
+.btn.active{border-color:var(--accent);color:var(--accent);}
+.btn-row{display:flex;gap:8px;align-items:stretch;}
+.icon-btn{flex:0 0 44px;width:44px;height:44px;padding:0;border-radius:12px;}
+.icon-btn svg{width:20px;height:20px;}
+.slider-row{display:flex;flex-direction:column;gap:5px;}
+.ctrl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.val{font-size:13px;color:var(--accent);font-family:"SF Mono","Courier New",monospace;}
+.slider-btns{display:flex;align-items:center;gap:6px;}
+.slider-btns input{flex:1;accent-color:var(--accent);}
+.step-btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:6px;width:30px;height:30px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;user-select:none;}
+.step-btn:active{border-color:var(--accent);color:var(--accent);}
+.select-input{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:14px;outline:none;width:100%;}
+.select-input:focus{border-color:var(--accent);}
+#statusBar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+#sideStatus{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;}
+#persistentCode{font-family:"SF Mono","Courier New",monospace;font-size:12px;color:var(--accent);border:1px solid var(--border);border-radius:6px;padding:3px 8px;letter-spacing:.1em;cursor:pointer;}
+.small-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:5px;font-size:11px;cursor:pointer;}
+.small-btn:hover{border-color:var(--accent);color:var(--accent);}
 
-  /* Controls */
-  .control-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-  .btn {
-    background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
-    border-radius:8px; padding:10px 18px; font-size:14px; cursor:pointer; flex:1;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .btn.active { border-color:var(--accent); color:var(--accent); }
-  .btn-row { display:flex; gap:8px; align-items:stretch; }
-  .icon-btn { flex:0 0 48px; width:48px; height:48px; padding:0; border-radius:12px; }
-  .icon-btn svg { width:22px; height:22px; }
+/* ---- Modals ---- */
+#qrModal{display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.82);align-items:center;justify-content:center;}
+#qrModal .inner{background:#141414;border:1px solid #2a2a2a;border-radius:12px;padding:28px 24px;text-align:center;display:flex;flex-direction:column;gap:14px;min-width:260px;}
+#qrModalCode{font-family:"SF Mono","Courier New",monospace;font-size:40px;letter-spacing:.2em;color:var(--accent);border:2px solid var(--accent);border-radius:8px;padding:12px 18px;}
+#qrModal .close{background:none;border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;}
 
-  input[type="range"] { width:100%; accent-color:var(--accent); }
-  .slider-row { display:flex; flex-direction:column; gap:6px; }
-  .slider-row .control-row .label { margin:0; }
-  .value-display { font-size:13px; color:var(--accent); }
+#restoreToast{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:98;background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:14px 18px;align-items:center;gap:12px;box-shadow:0 4px 24px rgba(0,0,0,.6);white-space:nowrap;}
+#restoreToast.visible{display:flex;}
+.toast-btn{background:var(--accent);color:#000;border:none;padding:7px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;}
+.toast-btn.sec{background:none;border:1px solid var(--border);color:var(--muted);font-weight:400;}
 
-  .slider-with-buttons { display:flex; align-items:center; gap:8px; }
-  .slider-with-buttons input[type="range"] { flex:1; }
-  .step-btn {
-    background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
-    border-radius:6px; width:32px; height:32px; font-size:18px; cursor:pointer;
-    display:flex; align-items:center; justify-content:center; flex-shrink:0; user-select:none;
-  }
-  .step-btn:active { border-color:var(--accent); color:var(--accent); }
-
-  .select-input {
-    background:var(--panel-2); color:var(--text-color); border:1px solid var(--border);
-    border-radius:8px; padding:10px; font-size:14px; outline:none; width:100%;
-  }
-  .select-input:focus { border-color:var(--accent); }
-
-  hr.divider { border:none; border-top:1px solid var(--border); margin:4px 0; }
-
-  /* Bottom status bar */
-  #statusBar {
-    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-  }
-  #sideStatus { font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); font-weight:600; }
-  #persistentCode {
-    font-family:"SF Mono","Courier New",monospace; font-size:12px; color:var(--accent);
-    border:1px solid var(--border); border-radius:6px; padding:3px 8px; letter-spacing:0.1em;
-  }
-  #statusBar .action-btns { display:flex; gap:8px; margin-left:auto; }
-  .small-btn {
-    background:none; border:1px solid var(--border); color:var(--muted);
-    padding:6px 12px; border-radius:6px; font-size:12px; cursor:pointer;
-  }
-  .small-btn:hover { border-color:var(--accent); color:var(--accent); }
+/* ---- Rename input in tab ---- */
+.tab-rename{background:var(--panel);border:1px solid var(--accent);color:var(--text);font-size:13px;padding:1px 6px;border-radius:4px;outline:none;width:100px;}
 </style>
 </head>
 <body>
 
-  <div id="connectionPanel">
-    <h1>Teleprompter Control</h1>
-    <p>Scan the QR code with the prompter device, or enter this code manually in the prompter app.</p>
-    <div id="qrBox"><div id="qrCanvas"></div></div>
-    <div id="hostCode" class="mono">------</div>
-    <div id="connectionStatus">Generating session...</div>
-    <button id="newCodeBtn">Generate new code</button>
-    <button id="skipBtn" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Skip, set up script first</button>
+<div id="connectionPanel">
+  <h1>Teleprompter Control</h1>
+  <p>Scan the QR code on the prompter device or enter the code manually.</p>
+  <div id="qrBox" style="background:#fff;padding:12px;border-radius:10px;display:inline-block;"><div id="qrCanvas"></div></div>
+  <div id="hostCode" class="mono">------</div>
+  <div id="connectionStatus">Generating session...</div>
+  <button class="conn-btn" id="newCodeBtn">Generate new code</button>
+  <button class="conn-btn skip" id="skipBtn">Skip, set up script first</button>
+</div>
+
+<div id="mainPanel">
+  <div id="reconnectBanner">
+    <span>Prompter disconnected — reconnect with code</span>
+    <span id="bannerCode" class="code-inline">------</span>
+    <button id="dismissBanner">Dismiss</button>
   </div>
 
-  <div id="mainPanel">
-    <div id="reconnectBanner">
-      <span>Prompter disconnected. Reconnect using code</span>
-      <span id="bannerCode" class="code-inline">------</span>
-      <button id="dismissBanner">Dismiss</button>
+  <div id="editorPane">
+    <div class="pane-header">
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="editorModeBtn">Editor</button>
+        <button class="mode-btn" id="supervisorModeBtn">Supervisor</button>
+      </div>
+      <span id="saveStatus"></span>
     </div>
-
-    <div id="editorPane">
-      <div class="control-row">
-        <div class="label">Script</div>
-        <span id="saveStatus" style="font-size:11px;color:var(--muted);"></span>
-      </div>
-      <div class="toolbar">
-        <button class="toolbar-btn" id="undoBtn" title="Undo (Ctrl+Z)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7v6h6"/><path d="M3 13C5.5 7.5 12 5 17 8.5s6 10 2 14"/>
-          </svg>
-        </button>
-        <button class="toolbar-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 7v6h-6"/><path d="M21 13C18.5 7.5 12 5 7 8.5S1 18.5 5 22.5"/>
-          </svg>
-        </button>
-        <div style="width:1px;background:var(--border);height:22px;margin:0 2px;"></div>
-        <button class="toolbar-btn" id="copyBtn" title="Copy script" style="font-size:12px;width:auto;padding:0 10px;">Copy</button>
-        <button class="toolbar-btn" id="exportBtn" title="Export as .md" style="font-size:12px;width:auto;padding:0 10px;">Export .md</button>
-      </div>
-      <div id="editorRow">
-        <div id="editorStack">
-          <div id="highlightLayer" aria-hidden="true"></div>
-          <textarea id="textArea" spellcheck="false" placeholder="Type the script here. It updates on the prompter as you type."></textarea>
-        </div>
-        <div id="scrubberTrack"><div id="scrubberThumb"></div></div>
-      </div>
+    <div class="toolbar">
+      <button class="toolbar-btn" id="undoBtn" title="Undo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3 13C5.5 7.5 12 5 17 8.5s6 10 2 14"/></svg>
+      </button>
+      <button class="toolbar-btn" id="redoBtn" title="Redo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M21 13C18.5 7.5 12 5 7 8.5S1 18.5 5 22.5"/></svg>
+      </button>
+      <div class="toolbar-sep"></div>
+      <button class="toolbar-btn text" id="copyBtn">Copy</button>
+      <button class="toolbar-btn text" id="exportBtn">Export .md</button>
     </div>
-
-    <div id="sidePane">
-      <div class="label">Live preview</div>
-      <div id="monitor">
-        <div id="previewBox">
-          <div id="previewText"></div>
-        </div>
+    <div id="editorArea">
+      <div id="editorStack">
+        <div id="highlightLayer" aria-hidden="true"></div>
+        <textarea id="textArea" spellcheck="false" placeholder="Type the script here…"></textarea>
       </div>
-
-
-      <hr class="divider">
-
-      <div class="btn-row">
-        <button class="btn" id="playBtn">Play</button>
-        <button class="btn" id="resetBtn">Restart</button>
-        <button class="btn icon-btn" id="mirrorHBtn" title="Flip horizontal">
-          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="11" y="2" width="2" height="20" opacity="0.4"/><path d="M3 12l5-4.5v9z"/><path d="M21 12l-5-4.5v9z"/></svg>
-        </button>
-        <button class="btn icon-btn" id="mirrorVBtn" title="Flip vertical">
-          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="11" width="20" height="2" opacity="0.4"/><path d="M12 3l4.5 5h-9z"/><path d="M12 21l4.5-5h-9z"/></svg>
-        </button>
-      </div>
-
-      <div class="slider-row">
-        <div class="control-row">
-          <span class="label">Font size</span>
-          <span class="value-display mono" id="fontSizeValue">48px</span>
-        </div>
-        <div class="slider-with-buttons">
-          <button class="step-btn" id="fontDecBtn">−</button>
-          <input type="range" id="fontSizeSlider" min="20" max="200" step="1">
-          <button class="step-btn" id="fontIncBtn">+</button>
-        </div>
-      </div>
-
-      <div class="slider-row">
-        <div class="control-row">
-          <span class="label">Scroll speed</span>
-          <span class="value-display mono" id="speedValue">50</span>
-        </div>
-        <div class="slider-with-buttons">
-          <button class="step-btn" id="speedDecBtn">−</button>
-          <input type="range" id="speedSlider" min="0" max="400" step="1">
-          <button class="step-btn" id="speedIncBtn">+</button>
-        </div>
-      </div>
-
-      <div class="slider-row">
-        <div class="control-row"><span class="label">Font</span></div>
-        <select id="fontFamilySelect" class="select-input"></select>
-      </div>
-
-      <hr class="divider">
-
-      <div id="statusBar">
-        <div id="sideStatus">DISCONNECTED</div>
-        <span id="persistentCode" style="cursor:pointer;" title="Show QR code">------</span>
-        <div class="action-btns">
-          <button class="small-btn" id="showCodeBtn">Show QR</button>
-        </div>
-      </div>
+      <div id="scrubberTrack"><div id="scrubberThumb"></div></div>
+      <div id="supervisorView"></div>
     </div>
   </div>
 
-  <div id="qrModal" style="display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;">
-    <div style="background:#141414;border:1px solid #2a2a2a;border-radius:12px;padding:28px 24px;text-align:center;display:flex;flex-direction:column;gap:14px;min-width:260px;">
-      <div style="font-size:13px;color:#8a8a8a;text-transform:uppercase;letter-spacing:0.06em;">Connect prompter</div>
-      <div id="qrModalCanvas"></div>
-      <div id="qrModalCode" style="font-family:'SF Mono','Courier New',monospace;font-size:40px;letter-spacing:0.2em;color:#ffc800;border:2px solid #ffc800;border-radius:8px;padding:12px 18px;"></div>
-      <button id="closeQrModal" style="background:none;border:1px solid #2a2a2a;color:#f0f0f0;padding:10px 20px;border-radius:8px;font-size:14px;cursor:pointer;">Close</button>
-    </div>
-  </div>
+  <div id="dragHandle"></div>
 
-  <div id="restoreToast">
-    <div>
-      <div style="font-size:14px;">Restore autosaved script?</div>
-      <div id="savedTime" class="saved-time"></div>
+  <div id="sidePane">
+    <div class="label">Live preview</div>
+    <div id="monitor">
+      <div id="previewBox"><div id="previewText"></div></div>
     </div>
-    <button class="toast-btn" id="restoreBtn">Restore</button>
-    <button class="toast-btn secondary" id="dismissRestoreBtn">Discard</button>
+    <hr class="divider">
+    <div class="btn-row">
+      <button class="btn" id="playBtn">Play</button>
+      <button class="btn" id="resetBtn">Restart</button>
+      <button class="btn icon-btn" id="mirrorHBtn" title="Flip horizontal">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="11" y="2" width="2" height="20" opacity=".4"/><path d="M3 12l5-4.5v9z"/><path d="M21 12l-5-4.5v9z"/></svg>
+      </button>
+      <button class="btn icon-btn" id="mirrorVBtn" title="Flip vertical">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="11" width="20" height="2" opacity=".4"/><path d="M12 3l4.5 5h-9z"/><path d="M12 21l4.5-5h-9z"/></svg>
+      </button>
+    </div>
+    <div class="slider-row">
+      <div class="ctrl-row"><span class="label">Font size</span><span class="val" id="fontSizeValue">48px</span></div>
+      <div class="slider-btns">
+        <button class="step-btn" id="fontDecBtn">−</button>
+        <input type="range" id="fontSizeSlider" min="20" max="200" step="1">
+        <button class="step-btn" id="fontIncBtn">+</button>
+      </div>
+    </div>
+    <div class="slider-row">
+      <div class="ctrl-row"><span class="label">Scroll speed</span><span class="val" id="speedValue">50</span></div>
+      <div class="slider-btns">
+        <button class="step-btn" id="speedDecBtn">−</button>
+        <input type="range" id="speedSlider" min="0" max="400" step="1">
+        <button class="step-btn" id="speedIncBtn">+</button>
+      </div>
+    </div>
+    <div class="slider-row">
+      <div class="ctrl-row"><span class="label">Font</span></div>
+      <select id="fontFamilySelect" class="select-input"></select>
+    </div>
+    <hr class="divider">
+    <div id="statusBar">
+      <div id="sideStatus">DISCONNECTED</div>
+      <span id="persistentCode" title="Show QR">------</span>
+      <button class="small-btn" id="showCodeBtn">Show QR</button>
+    </div>
   </div>
+</div>
+
+<!-- Tab bar (rendered separately, placed above main panel) -->
+<div id="tabBar">
+  <button id="addTabBtn">+</button>
+  <div class="tab-session">
+    <button id="saveSessionBtn">Save session</button>
+    <button id="loadSessionBtn">Load session</button>
+    <input type="file" id="fileInput" accept=".tpsession,.json">
+  </div>
+</div>
+
+<div id="qrModal">
+  <div class="inner">
+    <div style="font-size:13px;color:#8a8a8a;text-transform:uppercase;letter-spacing:.06em;">Connect prompter</div>
+    <div id="qrModalCanvas"></div>
+    <div id="qrModalCode"></div>
+    <button class="close" id="closeQrModal">Close</button>
+  </div>
+</div>
+
+<div id="restoreToast">
+  <div><div style="font-size:14px;">Restore autosaved script?</div><div id="savedTime" style="font-size:12px;color:#8a8a8a;"></div></div>
+  <button class="toast-btn" id="restoreBtn">Restore</button>
+  <button class="toast-btn sec" id="dismissRestoreBtn">Discard</button>
+</div>
 
 <script>
-  const connectionPanel = document.getElementById('connectionPanel');
-  const mainPanel = document.getElementById('mainPanel');
-  const hostCode = document.getElementById('hostCode');
-  const connectionStatus = document.getElementById('connectionStatus');
-  const newCodeBtn = document.getElementById('newCodeBtn');
-  const skipBtn = document.getElementById('skipBtn');
-  const qrCanvas = document.getElementById('qrCanvas');
-  const reconnectBanner = document.getElementById('reconnectBanner');
-  const bannerCode = document.getElementById('bannerCode');
-  const dismissBanner = document.getElementById('dismissBanner');
-  const persistentCode = document.getElementById('persistentCode');
-  const showCodeBtn = document.getElementById('showCodeBtn');
-  const qrModal = document.getElementById('qrModal');
-  const qrModalCanvas = document.getElementById('qrModalCanvas');
-  const qrModalCode = document.getElementById('qrModalCode');
-  const closeQrModal = document.getElementById('closeQrModal');
-  const restoreToast = document.getElementById('restoreToast');
-  const savedTimeEl = document.getElementById('savedTime');
-  const restoreBtn = document.getElementById('restoreBtn');
-  const dismissRestoreBtn = document.getElementById('dismissRestoreBtn');
+// ============================================================
+// CONSTANTS & HELPERS
+// ============================================================
+const AUTOSAVE_KEY = 'tp_autosave';
+const SESSION_KEY  = 'tp_session';
+const AUTOSAVE_DELAY = 15000;
+const WHEEL_SENSITIVITY = 0.6;
 
-  const highlightLayer = document.getElementById('highlightLayer');
-  const textArea = document.getElementById('textArea');
-  const undoBtn = document.getElementById('undoBtn');
-  const redoBtn = document.getElementById('redoBtn');
-  const scrubberTrack = document.getElementById('scrubberTrack');
-  const scrubberThumb = document.getElementById('scrubberThumb');
-  const exportBtn = document.getElementById('exportBtn');
-  const copyBtn = document.getElementById('copyBtn');
-  const saveStatus = document.getElementById('saveStatus');
+function uid() { return Math.random().toString(36).slice(2, 10); }
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  const playBtn = document.getElementById('playBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const mirrorHBtn = document.getElementById('mirrorHBtn');
-  const mirrorVBtn = document.getElementById('mirrorVBtn');
-  const fontSizeSlider = document.getElementById('fontSizeSlider');
-  const fontSizeValue = document.getElementById('fontSizeValue');
-  const fontIncBtn = document.getElementById('fontIncBtn');
-  const fontDecBtn = document.getElementById('fontDecBtn');
-  const speedSlider = document.getElementById('speedSlider');
-  const speedValue = document.getElementById('speedValue');
-  const speedIncBtn = document.getElementById('speedIncBtn');
-  const speedDecBtn = document.getElementById('speedDecBtn');
-  const fontFamilySelect = document.getElementById('fontFamilySelect');
-  const sidePane = document.getElementById('sidePane');
-  const monitor = document.getElementById('monitor');
-  const previewBox = document.getElementById('previewBox');
-  const previewText = document.getElementById('previewText');
-  const sideStatus = document.getElementById('sideStatus');
+const FONTS = {
+  verdana:  { label:'Verdana',               stack:'Verdana,Geneva,sans-serif' },
+  opensans: { label:'Open Sans',             stack:"'Open Sans',sans-serif" },
+  atkinson: { label:'Atkinson Hyperlegible', stack:"'Atkinson Hyperlegible',sans-serif" },
+  mono:     { label:'Monospace',             stack:"'Courier New',monospace" }
+};
 
-  const FONTS = {
-    verdana:   { label: 'Verdana',               stack: 'Verdana, Geneva, sans-serif' },
-    opensans:  { label: 'Open Sans',             stack: "'Open Sans', sans-serif" },
-    atkinson:  { label: 'Atkinson Hyperlegible', stack: "'Atkinson Hyperlegible', sans-serif" },
-    mono:      { label: 'Monospace',             stack: "'Courier New', monospace" }
-  };
-  Object.entries(FONTS).forEach(([key, f]) => {
-    const opt = document.createElement('option');
-    opt.value = key; opt.textContent = f.label; opt.style.fontFamily = f.stack;
-    fontFamilySelect.appendChild(opt);
+// ============================================================
+// DOM REFS
+// ============================================================
+const connectionPanel = document.getElementById('connectionPanel');
+const mainPanel       = document.getElementById('mainPanel');
+const tabBar          = document.getElementById('tabBar');
+const hostCode        = document.getElementById('hostCode');
+const connectionStatus= document.getElementById('connectionStatus');
+const newCodeBtn      = document.getElementById('newCodeBtn');
+const skipBtn         = document.getElementById('skipBtn');
+const qrCanvas        = document.getElementById('qrCanvas');
+const reconnectBanner = document.getElementById('reconnectBanner');
+const bannerCode      = document.getElementById('bannerCode');
+const dismissBanner   = document.getElementById('dismissBanner');
+const persistentCode  = document.getElementById('persistentCode');
+const showCodeBtn     = document.getElementById('showCodeBtn');
+const qrModal         = document.getElementById('qrModal');
+const qrModalCanvas   = document.getElementById('qrModalCanvas');
+const qrModalCode     = document.getElementById('qrModalCode');
+const closeQrModal    = document.getElementById('closeQrModal');
+const restoreToast    = document.getElementById('restoreToast');
+const savedTimeEl     = document.getElementById('savedTime');
+const restoreBtn      = document.getElementById('restoreBtn');
+const dismissRestoreBtn=document.getElementById('dismissRestoreBtn');
+const addTabBtn       = document.getElementById('addTabBtn');
+const saveSessionBtn  = document.getElementById('saveSessionBtn');
+const loadSessionBtn  = document.getElementById('loadSessionBtn');
+const fileInput       = document.getElementById('fileInput');
+const editorModeBtn   = document.getElementById('editorModeBtn');
+const supervisorModeBtn=document.getElementById('supervisorModeBtn');
+const saveStatus      = document.getElementById('saveStatus');
+const highlightLayer  = document.getElementById('highlightLayer');
+const textArea        = document.getElementById('textArea');
+const undoBtn         = document.getElementById('undoBtn');
+const redoBtn         = document.getElementById('redoBtn');
+const copyBtn         = document.getElementById('copyBtn');
+const exportBtn       = document.getElementById('exportBtn');
+const editorStack     = document.getElementById('editorStack');
+const supervisorView  = document.getElementById('supervisorView');
+const scrubberTrack   = document.getElementById('scrubberTrack');
+const scrubberThumb   = document.getElementById('scrubberThumb');
+const dragHandle      = document.getElementById('dragHandle');
+const sidePane        = document.getElementById('sidePane');
+const monitor         = document.getElementById('monitor');
+const previewBox      = document.getElementById('previewBox');
+const previewText     = document.getElementById('previewText');
+const playBtn         = document.getElementById('playBtn');
+const resetBtn        = document.getElementById('resetBtn');
+const mirrorHBtn      = document.getElementById('mirrorHBtn');
+const mirrorVBtn      = document.getElementById('mirrorVBtn');
+const fontSizeSlider  = document.getElementById('fontSizeSlider');
+const fontSizeValue   = document.getElementById('fontSizeValue');
+const fontIncBtn      = document.getElementById('fontIncBtn');
+const fontDecBtn      = document.getElementById('fontDecBtn');
+const speedSlider     = document.getElementById('speedSlider');
+const speedValue      = document.getElementById('speedValue');
+const speedIncBtn     = document.getElementById('speedIncBtn');
+const speedDecBtn     = document.getElementById('speedDecBtn');
+const fontFamilySelect= document.getElementById('fontFamilySelect');
+const sideStatus      = document.getElementById('sideStatus');
+
+// Font dropdown
+Object.entries(FONTS).forEach(([k,f]) => {
+  const o = document.createElement('option');
+  o.value=k; o.textContent=f.label; o.style.fontFamily=f.stack;
+  fontFamilySelect.appendChild(o);
+});
+
+// ============================================================
+// SESSION DATA MODEL
+// ============================================================
+// session = { scripts:[{id,name,text}], activeId, notes:{scriptId:{sectionIdx:{text,checked}}} }
+let session = loadSession();
+
+function defaultSession() {
+  const id = uid();
+  return { scripts:[{id, name:'Script 1', text:''}], activeId:id, notes:{} };
+}
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (raw) { const s = JSON.parse(raw); if (s && s.scripts) return s; }
+  } catch(e) {}
+  return defaultSession();
+}
+function saveSession() {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch(e) {}
+}
+function getActiveScript() {
+  return session.scripts.find(s => s.id === session.activeId) || session.scripts[0];
+}
+function getNotesForScript(scriptId) {
+  return session.notes[scriptId] || (session.notes[scriptId] = {});
+}
+
+// ============================================================
+// PROMPTER STATE (synced to phone)
+// ============================================================
+let state = {
+  text:'', fontSize:48, fontFamily:'opensans',
+  scrollSpeed:50, mirroredH:false, mirroredV:false, playState:'paused'
+};
+
+// Sync active script text into state
+function syncScriptToState() {
+  const scr = getActiveScript();
+  state.text = scr.text;
+}
+syncScriptToState();
+
+// ============================================================
+// UI MODE (editor / supervisor)
+// ============================================================
+let uiMode = 'editor'; // 'editor' | 'supervisor'
+
+function setMode(mode) {
+  uiMode = mode;
+  const sup = mode === 'supervisor';
+  mainPanel.classList.toggle('supervisor-mode', sup);
+  document.body.classList.toggle('supervisor-mode', sup);
+  editorModeBtn.classList.toggle('active', !sup);
+  supervisorModeBtn.classList.toggle('active', sup);
+  editorStack.style.display = sup ? 'none' : '';
+  scrubberTrack.style.display = sup ? 'none' : '';
+  supervisorView.classList.toggle('active', sup);
+  if (sup) renderSupervisorView();
+  else renderHighlight();
+}
+editorModeBtn.onclick = () => setMode('editor');
+supervisorModeBtn.onclick = () => { renderSupervisorView(); setMode('supervisor'); };
+
+// ============================================================
+// TAB BAR
+// ============================================================
+function renderTabs() {
+  // Remove existing tabs (keep addTabBtn + session area)
+  document.querySelectorAll('.tab').forEach(t => t.remove());
+  const ref = addTabBtn;
+  session.scripts.forEach(scr => {
+    const tab = document.createElement('button');
+    tab.className = 'tab' + (scr.id === session.activeId ? ' active' : '');
+    tab.innerHTML = `<span class="tab-name">${escapeHtml(scr.name)}</span>${session.scripts.length > 1 ? '<span class="tab-close">×</span>' : ''}`;
+    tab.querySelector('.tab-name').ondblclick = e => { e.stopPropagation(); startRenameTab(tab, scr); };
+    tab.onclick = e => {
+      if (e.target.classList.contains('tab-close')) { deleteScript(scr.id); return; }
+      switchToScript(scr.id);
+    };
+    tabBar.insertBefore(tab, ref);
   });
+}
 
-  let state = {
-    text: '', fontSize: 48, fontFamily: 'opensans',
-    scrollSpeed: 50, mirroredH: false, mirroredV: false, playState: 'paused'
+function switchToScript(id) {
+  // Save current text back to session
+  const cur = getActiveScript();
+  cur.text = textArea.value;
+  session.activeId = id;
+  saveSession();
+  syncScriptToState();
+  textArea.value = state.text;
+  sentenceStarts = buildSentenceStarts(state.text);
+  currentSentenceIdx = 0;
+  renderTabs();
+  renderControls();
+  sendUpdate('text', state.text);
+}
+
+function addScript() {
+  const cur = getActiveScript();
+  cur.text = textArea.value;
+  const id = uid();
+  session.scripts.push({ id, name: 'Script ' + (session.scripts.length + 1), text: '' });
+  switchToScript(id);
+}
+
+function deleteScript(id) {
+  if (session.scripts.length <= 1) return;
+  session.scripts = session.scripts.filter(s => s.id !== id);
+  if (session.activeId === id) session.activeId = session.scripts[0].id;
+  saveSession();
+  syncScriptToState();
+  textArea.value = state.text;
+  renderTabs();
+  renderControls();
+  sendUpdate('text', state.text);
+}
+
+function startRenameTab(tabEl, scr) {
+  const nameEl = tabEl.querySelector('.tab-name');
+  const inp = document.createElement('input');
+  inp.className = 'tab-rename';
+  inp.value = scr.name;
+  nameEl.replaceWith(inp);
+  inp.focus(); inp.select();
+  const finish = () => {
+    const val = inp.value.trim() || scr.name;
+    scr.name = val;
+    saveSession();
+    renderTabs();
   };
-  let scrollPct = 0;
-  let phoneViewport = { width: 390, height: 844 };
-  let previewScale = 1;
-  let previewScrollPos = 0;
-  let previewLastTime = null;
-  let draggingScrubber = false;
-  let dragOffset = 0;
-  let textDebounce;
-  let autoSaveDebounce;
-  let peer = null;
-  let conn = null;
-  let code = generateCode();
+  inp.onblur = finish;
+  inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = scr.name; inp.blur(); } };
+}
 
-  const AUTOSAVE_KEY = 'tp_autosave';
-  const AUTOSAVE_DELAY = 15000;
-  const WHEEL_SENSITIVITY = 0.6;
+addTabBtn.onclick = addScript;
 
-  function generateCode() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
+// ============================================================
+// SESSION SAVE / LOAD
+// ============================================================
+saveSessionBtn.onclick = () => {
+  const cur = getActiveScript();
+  cur.text = textArea.value;
+  saveSession();
+  const blob = new Blob([JSON.stringify(session, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'teleprompter-session.tpsession';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+};
 
-  // ---- QR Code ----
-  function buildPrompterUrl(c) {
-    const dir = window.location.pathname.replace(/\/[^/]*$/, '/');
-    return window.location.origin + dir + 'prompter.html?code=' + c;
-  }
-
-  let qrInstance = null;
-  function renderQr(c) {
-    qrCanvas.innerHTML = '';
+loadSessionBtn.onclick = () => fileInput.click();
+fileInput.onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
     try {
-      qrInstance = new QRCode(qrCanvas, {
-        text: buildPrompterUrl(c),
-        width: 180, height: 180,
-        colorDark: '#000', colorLight: '#fff',
-        correctLevel: QRCode.CorrectLevel.M
-      });
-    } catch(e) { qrCanvas.textContent = 'QR unavailable'; }
-  }
+      const loaded = JSON.parse(ev.target.result);
+      if (!loaded.scripts) throw new Error('Invalid');
+      session = loaded;
+      if (!session.notes) session.notes = {};
+      saveSession();
+      syncScriptToState();
+      textArea.value = state.text;
+      sentenceStarts = buildSentenceStarts(state.text);
+      currentSentenceIdx = 0;
+      renderTabs();
+      renderControls();
+      sendUpdate('text', state.text);
+    } catch(err) { alert('Could not load session file.'); }
+  };
+  reader.readAsText(file);
+  fileInput.value = '';
+};
 
-  // ---- Autosave ----
-  function autosave(text) {
-    try {
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ text, savedAt: Date.now() }));
-      saveStatus.textContent = 'Saved';
-      setTimeout(() => { saveStatus.textContent = ''; }, 3000);
-    } catch(e) { saveStatus.textContent = 'Save failed'; }
-  }
+// ============================================================
+// AUTOSAVE
+// ============================================================
+let autoSaveDebounce;
+let textDebounce;
 
-  function loadAutosave() {
-    try {
-      const raw = localStorage.getItem(AUTOSAVE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch(e) { return null; }
-  }
+function autosave(text) {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ text, savedAt: Date.now() }));
+    saveStatus.textContent = 'Saved';
+    setTimeout(() => { saveStatus.textContent = ''; }, 3000);
+  } catch(e) { saveStatus.textContent = 'Save failed'; }
+}
 
-  function checkAndOfferRestore() {
-    const saved = loadAutosave();
+function checkAndOfferRestore() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
     if (!saved || !saved.text || saved.text === state.text) return;
     const d = new Date(saved.savedAt);
     savedTimeEl.textContent = 'Saved ' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
     restoreToast.classList.add('visible');
+  } catch(e) {}
+}
+
+restoreBtn.onclick = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AUTOSAVE_KEY));
+    if (saved) { textArea.value = saved.text; sendUpdate('text', saved.text); }
+  } catch(e) {}
+  restoreToast.classList.remove('visible');
+};
+dismissRestoreBtn.onclick = () => restoreToast.classList.remove('visible');
+
+// ============================================================
+// SENTENCE NAVIGATION
+// ============================================================
+let sentenceStarts = [0];
+let currentSentenceIdx = 0;
+
+function buildSentenceStarts(text) {
+  const starts = [0];
+  const re = /[.!?]\s+|\n{2,}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const idx = m.index + m[0].length;
+    if (idx < text.length && /\S/.test(text[idx])) starts.push(idx);
+  }
+  return starts;
+}
+
+function jumpToSentence(idx) {
+  if (!sentenceStarts.length) return;
+  // Clamp and set authoritatively — don't re-read from DOM
+  idx = Math.max(0, Math.min(idx, sentenceStarts.length - 1));
+  currentSentenceIdx = idx;
+  const charIdx = sentenceStarts[idx];
+  const pct = scrollPctFromCharIndex(charIdx);
+  scrollPct = pct;
+  sendUpdate('seek', pct);
+  correctPreviewScroll(pct);
+  renderHighlight();
+  updateScrubber();
+  const total = state.text.length || 1;
+  textArea.scrollTop = (charIdx / total) * textArea.scrollHeight;
+  highlightLayer.scrollTop = textArea.scrollTop;
+}
+
+// ============================================================
+// SUPERVISOR VIEW
+// ============================================================
+function getParagraphs(text) {
+  const result = [];
+  let offset = 0;
+  const parts = text.split(/\n{2,}/);
+  for (const p of parts) {
+    const trimmed = p.trim();
+    if (trimmed) result.push({ text: trimmed, offset });
+    offset += p.length + 2;
+  }
+  return result;
+}
+
+function renderSupervisorView() {
+  const scr = getActiveScript();
+  const notes = getNotesForScript(scr.id);
+  const paras = getParagraphs(scr.text);
+  supervisorView.innerHTML = '';
+
+  if (!paras.length) {
+    supervisorView.innerHTML = '<div style="color:var(--muted);font-size:14px;padding:20px;text-align:center;">No content yet. Switch to Editor to write the script.</div>';
+    return;
   }
 
-  restoreBtn.onclick = () => {
-    const saved = loadAutosave();
-    if (saved && saved.text) {
-      textArea.value = saved.text;
-      sendUpdate('text', saved.text);
-    }
-    restoreToast.classList.remove('visible');
-  };
-  dismissRestoreBtn.onclick = () => restoreToast.classList.remove('visible');
+  paras.forEach((para, idx) => {
+    const note = notes[idx] || {};
+    const checked = !!note.checked;
+    const div = document.createElement('div');
+    div.className = 'sv-section' + (checked ? ' done' : '');
+    div.dataset.idx = idx;
 
-  // ---- Sentence navigation ----
-  // ---- Sentence navigation (no counter display, just the logic) ----
-  let sentenceStarts = [0];
-  let currentSentenceIdx = 0;
+    div.innerHTML = `
+      <div class="sv-main">
+        <span class="sv-section-num">${idx + 1}</span>
+        <input type="checkbox" class="sv-check" ${checked ? 'checked' : ''}>
+        <div class="sv-text">${escapeHtml(para.text)}</div>
+      </div>
+      <div class="sv-note-area">
+        ${note.text ? `<div class="sv-note" data-idx="${idx}">${escapeHtml(note.text)}</div>` : ''}
+        <button class="sv-add-note" data-idx="${idx}">${note.text ? '✏ Edit note' : '+ Add note'}</button>
+      </div>`;
 
-  function buildSentenceStarts(text) {
-    const starts = [0];
-    const re = /[.!?]\s+|\n{2,}/g;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      const idx = m.index + m[0].length;
-      if (idx < text.length && /\S/.test(text[idx])) starts.push(idx);
-    }
-    return starts;
-  }
-
-  function getSentenceIdxFromHighlight() {
-    const { startChar } = getHighlightRange();
-    let best = 0;
-    for (let i = 0; i < sentenceStarts.length; i++) {
-      if (sentenceStarts[i] <= startChar) best = i; else break;
-    }
-    return best;
-  }
-
-  function jumpToSentence(idx) {
-    if (!sentenceStarts.length) return;
-    idx = Math.max(0, Math.min(idx, sentenceStarts.length - 1));
-    currentSentenceIdx = idx;
-    const charIdx = sentenceStarts[idx];
-    const pct = scrollPctFromCharIndex(charIdx);
-    scrollPct = pct;
-    sendUpdate('seek', pct);
-    correctPreviewScroll(pct);
-    renderHighlight();
-    updateScrubber();
-    const total = state.text.length || 1;
-    textArea.scrollTop = (charIdx / total) * textArea.scrollHeight;
-    highlightLayer.scrollTop = textArea.scrollTop;
-  }
-
-  // ---- Rendering ----
-  function renderControls() {
-    if (document.activeElement !== textArea) textArea.value = state.text;
-    if (document.activeElement !== fontSizeSlider) fontSizeSlider.value = state.fontSize;
-    fontSizeValue.textContent = state.fontSize + 'px';
-    if (document.activeElement !== speedSlider) speedSlider.value = state.scrollSpeed;
-    speedValue.textContent = state.scrollSpeed;
-    if (document.activeElement !== fontFamilySelect) fontFamilySelect.value = state.fontFamily;
-    fontFamilySelect.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
-    mirrorHBtn.classList.toggle('active', state.mirroredH);
-    mirrorVBtn.classList.toggle('active', state.mirroredV);
-    playBtn.textContent = state.playState === 'playing' ? 'Pause' : 'Play';
-    playBtn.classList.toggle('active', state.playState === 'playing');
-    previewText.textContent = state.text;
-    previewText.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
-    updateMonitorScale();
-    renderHighlight();
-    updateScrubber();
-  }
-
-  // ---- To-scale preview ----
-  function updateMonitorScale() {
-    const cs = getComputedStyle(sidePane);
-    const availableWidth = sidePane.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const ratio = phoneViewport.width / phoneViewport.height;
-    let h = Math.min(280, availableWidth / ratio);
-    let w = h * ratio;
-    if (w > availableWidth) { w = availableWidth; h = w / ratio; }
-    monitor.style.width = w + 'px';
-    monitor.style.height = h + 'px';
-    previewScale = phoneViewport.width > 0 ? w / phoneViewport.width : 1;
-    previewText.style.fontSize = (state.fontSize * previewScale) + 'px';
-  }
-
-  function previewTick(ts) {
-    if (state.playState === 'playing' && !draggingPreview) {
-      if (previewLastTime !== null) {
-        const dt = (ts - previewLastTime) / 1000;
-        const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
-        previewScrollPos = Math.max(0, Math.min(previewScrollPos + state.scrollSpeed * previewScale * dt, max));
-        previewBox.scrollTop = previewScrollPos;
-      }
-      previewLastTime = ts;
-    } else { previewLastTime = null; }
-    requestAnimationFrame(previewTick);
-  }
-  requestAnimationFrame(previewTick);
-
-  function correctPreviewScroll(pct) {
-    const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
-    const target = pct * max;
-    const diff = target - previewScrollPos;
-    previewScrollPos = Math.abs(diff) > 40 ? target : previewScrollPos + diff * 0.25;
-    previewBox.scrollTop = previewScrollPos;
-  }
-
-  const WHEEL_SENSITIVITY_VAL = 0.6;
-  function scrubByPreviewPixels(deltaPx) {
-    const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
-    if (max <= 0) return;
-    previewScrollPos = Math.max(0, Math.min(previewScrollPos + deltaPx, max));
-    previewBox.scrollTop = previewScrollPos;
-    scrollPct = previewScrollPos / max;
-    sendUpdate('seek', scrollPct);
-    renderHighlight();
-    updateScrubber();
-    const { startChar } = getHighlightRange();
-    const total = state.text.length || 1;
-    textArea.scrollTop = (startChar / total) * textArea.scrollHeight;
-    highlightLayer.scrollTop = textArea.scrollTop;
-  }
-
-  // ---- Preview drag (1:1) ----
-  let draggingPreview = false;
-  let previewDragStartY = 0;
-  let previewDragStartScroll = 0;
-
-  previewBox.addEventListener('pointerdown', e => {
-    draggingPreview = true;
-    previewDragStartY = e.clientY;
-    previewDragStartScroll = previewScrollPos;
-    previewBox.setPointerCapture(e.pointerId);
-    previewBox.classList.add('dragging');
-  });
-  previewBox.addEventListener('pointermove', e => {
-    if (!draggingPreview) return;
-    scrubByPreviewPixels(-(e.clientY - previewDragStartY));
-    previewDragStartY = e.clientY;
-    previewDragStartScroll = previewScrollPos;
-  });
-  function endPreviewDrag() { draggingPreview = false; previewBox.classList.remove('dragging'); }
-  previewBox.addEventListener('pointerup', endPreviewDrag);
-  previewBox.addEventListener('pointercancel', endPreviewDrag);
-
-  previewBox.addEventListener('wheel', e => {
-    e.preventDefault();
-    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY_VAL);
-  }, { passive: false });
-
-  // ---- DOM-based highlight (reads from preview's rendered layout) ----
-  function getTextNode() {
-    const node = previewText.firstChild;
-    return (node && node.nodeType === Node.TEXT_NODE && node.length) ? node : null;
-  }
-
-  function caretOffsetAt(x, y, textNode) {
-    if (document.caretRangeFromPoint) {
-      const range = document.caretRangeFromPoint(x, y);
-      if (range) {
-        if (range.startContainer === textNode) return range.startOffset;
-        if (range.startContainer === previewText) return range.startOffset === 0 ? 0 : textNode.length;
-      }
-    } else if (document.caretPositionFromPoint) {
-      const pos = document.caretPositionFromPoint(x, y);
-      if (pos) {
-        if (pos.offsetNode === textNode) return pos.offset;
-        if (pos.offsetNode === previewText) return pos.offset === 0 ? 0 : textNode.length;
-      }
-    }
-    return null;
-  }
-
-  function getHighlightRange() {
-    const text = state.text;
-    const textNode = getTextNode();
-    if (!textNode || !text.length) return { startChar: 0, endChar: 0 };
-    const rect = previewBox.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return { startChar: 0, endChar: 0 };
-    const x = rect.left + 2;
-    let startChar = caretOffsetAt(x, rect.top + 1, textNode);
-    let endChar = caretOffsetAt(x, rect.bottom - 1, textNode);
-    if (startChar === null) startChar = 0;
-    if (endChar === null) endChar = text.length;
-    if (endChar < startChar) { const t = startChar; startChar = endChar; endChar = t; }
-    while (startChar > 0 && /\S/.test(text[startChar - 1]) && /\S/.test(text[startChar])) startChar--;
-    while (endChar < text.length && endChar > 0 && /\S/.test(text[endChar - 1]) && /\S/.test(text[endChar])) endChar++;
-    return { startChar, endChar };
-  }
-
-  function scrollPctFromCharIndex(charIdx) {
-    const textNode = getTextNode();
-    const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
-    if (!textNode || max <= 0) return 0;
-    charIdx = Math.max(0, Math.min(charIdx, textNode.length));
-    const range = document.createRange();
-    if (charIdx >= textNode.length) {
-      range.setStart(textNode, Math.max(0, textNode.length - 1));
-      range.setEnd(textNode, textNode.length);
-    } else {
-      range.setStart(textNode, charIdx);
-      range.setEnd(textNode, charIdx + 1);
-    }
-    const rects = range.getClientRects();
-    if (!rects.length) return scrollPct;
-    const boxRect = previewBox.getBoundingClientRect();
-    const charTop = (rects[0].top - boxRect.top) + previewBox.scrollTop;
-    return Math.max(0, Math.min(1, charTop / max));
-  }
-
-  function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function renderHighlight() {
-    const text = state.text;
-    const { startChar, endChar } = getHighlightRange();
-    const before = escapeHtml(text.slice(0, startChar));
-    const mid = escapeHtml(text.slice(startChar, endChar));
-    const after = escapeHtml(text.slice(endChar));
-    highlightLayer.innerHTML = before + (mid ? '<span class="highlight-span">' + mid + '</span>' : '') + after;
-    highlightLayer.scrollTop = textArea.scrollTop;
-  }
-
-  textArea.addEventListener('scroll', () => { highlightLayer.scrollTop = textArea.scrollTop; });
-
-  textArea.addEventListener('wheel', e => {
-    e.preventDefault();
-    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY_VAL);
-  }, { passive: false });
-
-  // ---- Scrubber ----
-  function thumbGeometry() {
-    const trackHeight = scrubberTrack.clientHeight;
-    const total = state.text.length || 1;
-    const { startChar, endChar } = getHighlightRange();
-    const startF = startChar / total;
-    const endF = endChar / total;
-    let thumbTop = startF * trackHeight;
-    let thumbHeight = Math.max(24, (endF - startF) * trackHeight);
-    if (thumbTop + thumbHeight > trackHeight) thumbTop = trackHeight - thumbHeight;
-    if (thumbTop < 0) thumbTop = 0;
-    return { trackHeight, thumbHeight, thumbTop };
-  }
-
-  function updateScrubber() {
-    const { thumbHeight, thumbTop } = thumbGeometry();
-    scrubberThumb.style.height = thumbHeight + 'px';
-    scrubberThumb.style.top = thumbTop + 'px';
-  }
-
-  function setScrollPctFromThumbTop(thumbTop) {
-    const { trackHeight, thumbHeight } = thumbGeometry();
-    thumbTop = Math.max(0, Math.min(thumbTop, trackHeight - thumbHeight));
-    const charF = trackHeight > 0 ? thumbTop / trackHeight : 0;
-    const pct = scrollPctFromCharIndex(Math.round(charF * (state.text.length || 1)));
-    scrollPct = pct;
-    sendUpdate('seek', pct);
-    correctPreviewScroll(pct);
-    renderHighlight();
-    updateScrubber();
-    textArea.scrollTop = charF * textArea.scrollHeight;
-    highlightLayer.scrollTop = textArea.scrollTop;
-  }
-
-  scrubberThumb.addEventListener('pointerdown', e => {
-    e.preventDefault();
-    draggingScrubber = true;
-    const { thumbTop } = thumbGeometry();
-    dragOffset = e.clientY - scrubberTrack.getBoundingClientRect().top - thumbTop;
-    scrubberThumb.setPointerCapture(e.pointerId);
-  });
-  scrubberThumb.addEventListener('pointermove', e => {
-    if (!draggingScrubber) return;
-    setScrollPctFromThumbTop(e.clientY - scrubberTrack.getBoundingClientRect().top - dragOffset);
-  });
-  scrubberThumb.addEventListener('pointerup', () => { draggingScrubber = false; });
-  scrubberThumb.addEventListener('pointercancel', () => { draggingScrubber = false; });
-  scrubberTrack.addEventListener('pointerdown', e => {
-    if (e.target === scrubberThumb) return;
-    const { thumbHeight } = thumbGeometry();
-    setScrollPctFromThumbTop(e.clientY - scrubberTrack.getBoundingClientRect().top - thumbHeight / 2);
-  });
-  scrubberTrack.addEventListener('wheel', e => {
-    e.preventDefault();
-    scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY_VAL);
-  }, { passive: false });
-
-  // ---- Outgoing updates ----
-  function sendUpdate(field, value) {
-    if (conn && conn.open) conn.send({ type: 'update', field, value });
-  }
-
-  playBtn.onclick = () => sendUpdate('playState', state.playState === 'playing' ? 'paused' : 'playing');
-  resetBtn.onclick = () => {
-    sendUpdate('reset', true);
-    scrollPct = 0; previewScrollPos = 0; previewBox.scrollTop = 0;
-    renderHighlight(); updateScrubber();
-  };
-  mirrorHBtn.onclick = () => sendUpdate('mirroredH', !state.mirroredH);
-  mirrorVBtn.onclick = () => sendUpdate('mirroredV', !state.mirroredV);
-  fontFamilySelect.onchange = () => sendUpdate('fontFamily', fontFamilySelect.value);
-
-  function stepFont(delta) {
-    const val = Math.max(20, Math.min(200, parseInt(fontSizeSlider.value, 10) + delta));
-    fontSizeSlider.value = val; fontSizeValue.textContent = val + 'px';
-    sendUpdate('fontSize', val);
-  }
-  function stepSpeed(delta) {
-    const val = Math.max(0, Math.min(400, parseInt(speedSlider.value, 10) + delta));
-    speedSlider.value = val; speedValue.textContent = val;
-    sendUpdate('scrollSpeed', val);
-  }
-  fontIncBtn.onclick = () => stepFont(2); fontDecBtn.onclick = () => stepFont(-2);
-  speedIncBtn.onclick = () => stepSpeed(5); speedDecBtn.onclick = () => stepSpeed(-5);
-  fontSizeSlider.oninput = () => { fontSizeValue.textContent = fontSizeSlider.value + 'px'; sendUpdate('fontSize', parseInt(fontSizeSlider.value, 10)); };
-  speedSlider.oninput = () => { speedValue.textContent = speedSlider.value; sendUpdate('scrollSpeed', parseInt(speedSlider.value, 10)); };
-
-  textArea.oninput = () => {
-    clearTimeout(textDebounce);
-    const value = textArea.value;
-    textDebounce = setTimeout(() => sendUpdate('text', value), 250);
-    renderHighlight();
-    sentenceStarts = buildSentenceStarts(value);
-    saveStatus.textContent = 'Saving...';
-    clearTimeout(autoSaveDebounce);
-    autoSaveDebounce = setTimeout(() => autosave(value), AUTOSAVE_DELAY);
-  };
-
-  // ---- Undo/Redo ----
-  undoBtn.onclick = () => { textArea.focus(); document.execCommand('undo'); };
-  redoBtn.onclick = () => { textArea.focus(); document.execCommand('redo'); };
-
-  // ---- Keyboard shortcuts ----
-  document.addEventListener('keydown', e => {
-    const inEditor = document.activeElement === textArea;
-
-    // Spacebar: play/pause when not in editor
-    if ((e.code === 'Space' || e.key === ' ') && !inEditor) {
-      e.preventDefault();
-      sendUpdate('playState', state.playState === 'playing' ? 'paused' : 'playing');
-      return;
-    }
-
-    // Redo: Ctrl+Shift+Z or Ctrl+Y (when in editor the browser handles Ctrl+Z natively)
-    if (!inEditor && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
-      textArea.focus(); document.execCommand('redo'); textArea.blur(); return;
-    }
-
-    // Arrow up/down: jump to prev/next sentence start when editor not focused
-    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !inEditor) {
-      e.preventDefault();
-      currentSentenceIdx = getSentenceIdxFromHighlight();
-      jumpToSentence(e.key === 'ArrowDown' ? currentSentenceIdx + 1 : currentSentenceIdx - 1);
-    }
-  });
-
-  // ---- Export / Copy ----
-  exportBtn.onclick = () => {
-    const blob = new Blob([state.text], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'script.md';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-  };
-  copyBtn.onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(state.text);
-      const orig = copyBtn.textContent; copyBtn.textContent = 'Copied';
-      setTimeout(() => { copyBtn.textContent = orig; }, 1200);
-    } catch(e) { copyBtn.textContent = 'Failed'; setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200); }
-  };
-
-  // ---- Incoming data ----
-  function handleData(msg) {
-    if (msg.type === 'state') {
-      state = msg.data;
-      sentenceStarts = buildSentenceStarts(state.text);
-      renderControls();
-    } else if (msg.type === 'scroll') {
-      scrollPct = msg.position;
-      if (!draggingPreview) correctPreviewScroll(scrollPct);
+    // Click text area to jump
+    div.querySelector('.sv-main').addEventListener('click', e => {
+      if (e.target.classList.contains('sv-check')) return;
+      const pct = scrollPctFromCharIndex(para.offset);
+      scrollPct = pct;
+      sendUpdate('seek', pct);
+      correctPreviewScroll(pct);
       renderHighlight();
       updateScrubber();
-        } else if (msg.type === 'viewport') {
-      phoneViewport = { width: msg.width, height: msg.height };
-      updateMonitorScale();
-    }
-  }
+    });
 
-  window.addEventListener('resize', () => { updateMonitorScale(); updateScrubber(); });
-  dismissBanner.onclick = () => reconnectBanner.classList.remove('visible');
+    // Checkbox
+    div.querySelector('.sv-check').addEventListener('change', e => {
+      notes[idx] = { ...(notes[idx] || {}), checked: e.target.checked };
+      saveSession();
+      div.classList.toggle('done', e.target.checked);
+    });
 
-  // Skip: open the main panel without waiting for a prompter
-  skipBtn.onclick = () => {
-    connectionPanel.classList.add('hidden');
-    mainPanel.classList.add('visible');
-    updateMonitorScale();
-    updateScrubber();
-  };
+    // Note button
+    div.querySelector('.sv-add-note').addEventListener('click', () => openNoteEditor(div, idx, notes));
 
-  // Show QR modal from main panel
-  function openQrModal() {
-    qrModalCanvas.innerHTML = '';
-    try {
-      new QRCode(qrModalCanvas, {
-        text: buildPrompterUrl(code),
-        width: 180, height: 180,
-        colorDark: '#000', colorLight: '#fff',
-        correctLevel: QRCode.CorrectLevel.M
-      });
-    } catch(e) {}
-    qrModalCode.textContent = code;
-    qrModal.style.display = 'flex';
-  }
-  showCodeBtn.onclick = openQrModal;
-  persistentCode.onclick = openQrModal;
-  closeQrModal.onclick = () => { qrModal.style.display = 'none'; };
-  qrModal.addEventListener('pointerdown', e => {
-    if (e.target === qrModal) qrModal.style.display = 'none';
+    // Click existing note to edit
+    const noteEl = div.querySelector('.sv-note');
+    if (noteEl) noteEl.addEventListener('click', () => openNoteEditor(div, idx, notes));
+
+    supervisorView.appendChild(div);
   });
+}
 
-  // ---- Host the session ----
-  function applyCode(c) {
-    code = c;
-    hostCode.textContent = c;
-    bannerCode.textContent = c;
-    persistentCode.textContent = c;
-    renderQr(c);
-  }
-
-  function startHost() {
-    peer = new Peer('tp-' + code);
-    peer.on('open', () => {
-      applyCode(code);
-      connectionStatus.textContent = 'Waiting for the prompter to connect...';
-    });
-    peer.on('connection', c => {
-      conn = c;
-      conn.on('open', () => {
-        reconnectBanner.classList.remove('visible');
-        connectionPanel.classList.add('hidden');
-        mainPanel.classList.add('visible');
-        updateMonitorScale(); updateScrubber();
-      });
-      conn.on('data', handleData);
-      conn.on('close', () => {
-        conn = null;
-        sideStatus.textContent = 'DISCONNECTED';
-        reconnectBanner.classList.add('visible');
-        // Don't reset the main panel — keep the script and state intact
-      });
-    });
-    peer.on('error', err => {
-      if (err.type === 'unavailable-id') {
-        code = generateCode(); peer.destroy(); startHost();
-      } else { connectionStatus.textContent = 'Error: ' + err.type; }
-    });
-  }
-
-  // When the prompter reconnects, restore connected status
-  peer === null && startHost();
-
-  // Watch for new connections even when main panel is up (handles reconnects)
-  setInterval(() => {
-    if (peer && !conn) {
-      peer.on('connection', c => {
-        conn = c;
-        conn.on('open', () => {
-          sideStatus.textContent = 'CONNECTED';
-          reconnectBanner.classList.remove('visible');
-          if (state.text) conn.send({ type: 'state', data: state });
-        });
-        conn.on('data', handleData);
-        conn.on('close', () => { conn = null; sideStatus.textContent = 'DISCONNECTED'; reconnectBanner.classList.add('visible'); });
-      });
-    }
-  }, 2000);
-
-  newCodeBtn.onclick = () => {
-    if (peer) peer.destroy(); conn = null;
-    code = generateCode();
-    connectionStatus.textContent = 'Generating session...';
-    startHost();
+function openNoteEditor(sectionEl, idx, notes) {
+  const noteArea = sectionEl.querySelector('.sv-note-area');
+  const existing = sectionEl.querySelector('.sv-note');
+  const addBtn = sectionEl.querySelector('.sv-add-note');
+  if (noteArea.querySelector('.sv-note-input')) return;
+  const inp = document.createElement('textarea');
+  inp.className = 'sv-note-input';
+  inp.value = (notes[idx] || {}).text || '';
+  inp.placeholder = 'Add a note for this section...';
+  inp.rows = 2;
+  if (existing) noteArea.insertBefore(inp, existing);
+  else noteArea.insertBefore(inp, addBtn);
+  inp.focus();
+  const save = () => {
+    const val = inp.value.trim();
+    notes[idx] = { ...(notes[idx] || {}), text: val };
+    saveSession();
+    renderSupervisorView();
   };
+  inp.onblur = save;
+  inp.onkeydown = e => { if (e.key === 'Escape') { inp.onblur = null; inp.remove(); } };
+}
 
-  // ---- Offer to restore autosaved script ----
+function exportWithNotes() {
+  const scr = getActiveScript();
+  const notes = getNotesForScript(scr.id);
+  const paras = getParagraphs(scr.text);
+  let md = scr.text;
+  const noteEntries = paras.map((p, i) => notes[i]).filter(n => n && (n.text || n.checked));
+  if (noteEntries.length) {
+    md += '\n\n---\n## Director\'s Notes\n';
+    paras.forEach((p, i) => {
+      const n = notes[i];
+      if (!n || (!n.text && !n.checked)) return;
+      md += `\n**Section ${i + 1}**${n.checked ? ' ✓' : ''}\n`;
+      if (n.text) md += `${n.text}\n`;
+    });
+  }
+  const blob = new Blob([md], { type:'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (scr.name || 'script') + '.md';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function renderControls() {
+  if (document.activeElement !== textArea) textArea.value = state.text;
+  if (document.activeElement !== fontSizeSlider) fontSizeSlider.value = state.fontSize;
+  fontSizeValue.textContent = state.fontSize + 'px';
+  if (document.activeElement !== speedSlider) speedSlider.value = state.scrollSpeed;
+  speedValue.textContent = state.scrollSpeed;
+  if (document.activeElement !== fontFamilySelect) fontFamilySelect.value = state.fontFamily;
+  fontFamilySelect.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
+  mirrorHBtn.classList.toggle('active', state.mirroredH);
+  mirrorVBtn.classList.toggle('active', state.mirroredV);
+  playBtn.textContent = state.playState === 'playing' ? 'Pause' : 'Play';
+  playBtn.classList.toggle('active', state.playState === 'playing');
+  previewText.textContent = state.text;
+  previewText.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
+  updateMonitorScale();
+  renderHighlight();
+  updateScrubber();
+}
+
+// ============================================================
+// DRAGGABLE SPLIT
+// ============================================================
+let isDraggingHandle = false;
+let handleStartX = 0;
+let handleStartW = 0;
+
+dragHandle.addEventListener('pointerdown', e => {
+  isDraggingHandle = true;
+  handleStartX = e.clientX;
+  handleStartW = document.getElementById('editorPane').getBoundingClientRect().width;
+  dragHandle.classList.add('dragging');
+  dragHandle.setPointerCapture(e.pointerId);
+});
+dragHandle.addEventListener('pointermove', e => {
+  if (!isDraggingHandle) return;
+  const delta = e.clientX - handleStartX;
+  const newW = Math.max(200, Math.min(handleStartW + delta, window.innerWidth - 220));
+  document.getElementById('editorPane').style.flex = `0 0 ${newW}px`;
+  updateMonitorScale();
+});
+dragHandle.addEventListener('pointerup', () => { isDraggingHandle = false; dragHandle.classList.remove('dragging'); });
+
+// ============================================================
+// TO-SCALE PREVIEW
+// ============================================================
+let scrollPct = 0;
+let phoneViewport = { width: 390, height: 844 };
+let previewScale = 1;
+let previewScrollPos = 0;
+let previewLastTime = null;
+let draggingPreview = false;
+let draggingScrubber = false;
+let dragScrubOffset = 0;
+let peer = null;
+let conn = null;
+let code = generateCode();
+
+function generateCode() { return Math.floor(100000 + Math.random() * 900000).toString(); }
+
+function updateMonitorScale() {
+  const cs = getComputedStyle(sidePane);
+  const avail = sidePane.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const ratio = phoneViewport.width / phoneViewport.height;
+  let h = Math.min(260, avail / ratio);
+  let w = h * ratio;
+  if (w > avail) { w = avail; h = w / ratio; }
+  monitor.style.width = w + 'px';
+  monitor.style.height = h + 'px';
+  previewScale = phoneViewport.width > 0 ? w / phoneViewport.width : 1;
+  previewText.style.fontSize = (state.fontSize * previewScale) + 'px';
+}
+
+function previewTick(ts) {
+  if (state.playState === 'playing' && !draggingPreview) {
+    if (previewLastTime !== null) {
+      const dt = (ts - previewLastTime) / 1000;
+      const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+      previewScrollPos = Math.max(0, Math.min(previewScrollPos + state.scrollSpeed * previewScale * dt, max));
+      previewBox.scrollTop = previewScrollPos;
+    }
+    previewLastTime = ts;
+  } else { previewLastTime = null; }
+  requestAnimationFrame(previewTick);
+}
+requestAnimationFrame(previewTick);
+
+function correctPreviewScroll(pct) {
+  const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+  const target = pct * max;
+  const diff = target - previewScrollPos;
+  previewScrollPos = Math.abs(diff) > 40 ? target : previewScrollPos + diff * 0.25;
+  previewBox.scrollTop = previewScrollPos;
+}
+
+function scrubByPreviewPixels(deltaPx) {
+  const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+  if (max <= 0) return;
+  previewScrollPos = Math.max(0, Math.min(previewScrollPos + deltaPx, max));
+  previewBox.scrollTop = previewScrollPos;
+  scrollPct = previewScrollPos / max;
+  sendUpdate('seek', scrollPct);
+  renderHighlight();
+  updateScrubber();
+  const { startChar } = getHighlightRange();
+  const total = state.text.length || 1;
+  textArea.scrollTop = (startChar / total) * textArea.scrollHeight;
+  highlightLayer.scrollTop = textArea.scrollTop;
+}
+
+// Preview drag
+let prevDragY = 0;
+previewBox.addEventListener('pointerdown', e => {
+  draggingPreview = true; prevDragY = e.clientY;
+  previewBox.setPointerCapture(e.pointerId);
+  previewBox.classList.add('dragging');
+});
+previewBox.addEventListener('pointermove', e => {
+  if (!draggingPreview) return;
+  scrubByPreviewPixels(-(e.clientY - prevDragY));
+  prevDragY = e.clientY;
+});
+const endPreviewDrag = () => { draggingPreview = false; previewBox.classList.remove('dragging'); };
+previewBox.addEventListener('pointerup', endPreviewDrag);
+previewBox.addEventListener('pointercancel', endPreviewDrag);
+previewBox.addEventListener('wheel', e => { e.preventDefault(); scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY); }, { passive:false });
+
+// ============================================================
+// DOM-BASED HIGHLIGHT
+// ============================================================
+function getTextNode() {
+  const n = previewText.firstChild;
+  return (n && n.nodeType === Node.TEXT_NODE && n.length) ? n : null;
+}
+function caretOffsetAt(x, y, tn) {
+  if (document.caretRangeFromPoint) {
+    const r = document.caretRangeFromPoint(x, y);
+    if (r) { if (r.startContainer === tn) return r.startOffset; if (r.startContainer === previewText) return r.startOffset === 0 ? 0 : tn.length; }
+  } else if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(x, y);
+    if (p) { if (p.offsetNode === tn) return p.offset; if (p.offsetNode === previewText) return p.offset === 0 ? 0 : tn.length; }
+  }
+  return null;
+}
+function getHighlightRange() {
+  const text = state.text;
+  const tn = getTextNode();
+  if (!tn || !text.length) return { startChar:0, endChar:0 };
+  const rect = previewBox.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return { startChar:0, endChar:0 };
+  const x = rect.left + 2;
+  let s = caretOffsetAt(x, rect.top + 1, tn);
+  let e = caretOffsetAt(x, rect.bottom - 1, tn);
+  if (s === null) s = 0;
+  if (e === null) e = text.length;
+  if (e < s) { const t = s; s = e; e = t; }
+  while (s > 0 && /\S/.test(text[s-1]) && /\S/.test(text[s])) s--;
+  while (e < text.length && e > 0 && /\S/.test(text[e-1]) && /\S/.test(text[e])) e++;
+  return { startChar:s, endChar:e };
+}
+function scrollPctFromCharIndex(ci) {
+  const tn = getTextNode();
+  const max = Math.max(0, previewText.scrollHeight - previewBox.clientHeight);
+  if (!tn || max <= 0) return 0;
+  ci = Math.max(0, Math.min(ci, tn.length));
+  const range = document.createRange();
+  if (ci >= tn.length) { range.setStart(tn, Math.max(0,tn.length-1)); range.setEnd(tn, tn.length); }
+  else { range.setStart(tn, ci); range.setEnd(tn, ci+1); }
+  const rects = range.getClientRects();
+  if (!rects.length) return scrollPct;
+  const boxRect = previewBox.getBoundingClientRect();
+  return Math.max(0, Math.min(1, ((rects[0].top - boxRect.top) + previewBox.scrollTop) / max));
+}
+function renderHighlight() {
+  if (uiMode === 'supervisor') return;
+  const text = state.text;
+  const { startChar, endChar } = getHighlightRange();
+  highlightLayer.innerHTML = escapeHtml(text.slice(0,startChar)) + (startChar < endChar ? '<span class="highlight-span">' + escapeHtml(text.slice(startChar,endChar)) + '</span>' : '') + escapeHtml(text.slice(endChar));
+  highlightLayer.scrollTop = textArea.scrollTop;
+}
+textArea.addEventListener('scroll', () => { highlightLayer.scrollTop = textArea.scrollTop; });
+
+// ============================================================
+// SCRUBBER
+// ============================================================
+function thumbGeometry() {
+  const h = scrubberTrack.clientHeight;
+  const total = state.text.length || 1;
+  const { startChar, endChar } = getHighlightRange();
+  let top = (startChar / total) * h;
+  let size = Math.max(24, ((endChar - startChar) / total) * h);
+  if (top + size > h) top = h - size;
+  if (top < 0) top = 0;
+  return { h, size, top };
+}
+function updateScrubber() {
+  const { size, top } = thumbGeometry();
+  scrubberThumb.style.height = size + 'px';
+  scrubberThumb.style.top = top + 'px';
+}
+function seekFromThumbTop(tt) {
+  const { h, size } = thumbGeometry();
+  tt = Math.max(0, Math.min(tt, h - size));
+  const cf = h > 0 ? tt / h : 0;
+  const pct = scrollPctFromCharIndex(Math.round(cf * (state.text.length || 1)));
+  scrollPct = pct; sendUpdate('seek', pct); correctPreviewScroll(pct); renderHighlight(); updateScrubber();
+  textArea.scrollTop = cf * textArea.scrollHeight;
+  highlightLayer.scrollTop = textArea.scrollTop;
+}
+scrubberThumb.addEventListener('pointerdown', e => {
+  e.preventDefault(); draggingScrubber = true;
+  const { top } = thumbGeometry();
+  dragScrubOffset = e.clientY - scrubberTrack.getBoundingClientRect().top - top;
+  scrubberThumb.setPointerCapture(e.pointerId);
+});
+scrubberThumb.addEventListener('pointermove', e => {
+  if (!draggingScrubber) return;
+  seekFromThumbTop(e.clientY - scrubberTrack.getBoundingClientRect().top - dragScrubOffset);
+});
+scrubberThumb.addEventListener('pointerup', () => { draggingScrubber = false; });
+scrubberThumb.addEventListener('pointercancel', () => { draggingScrubber = false; });
+scrubberTrack.addEventListener('pointerdown', e => {
+  if (e.target === scrubberThumb) return;
+  const { size } = thumbGeometry();
+  seekFromThumbTop(e.clientY - scrubberTrack.getBoundingClientRect().top - size / 2);
+});
+scrubberTrack.addEventListener('wheel', e => { e.preventDefault(); scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY); }, { passive:false });
+textArea.addEventListener('wheel', e => { e.preventDefault(); scrubByPreviewPixels(e.deltaY * WHEEL_SENSITIVITY); }, { passive:false });
+
+// ============================================================
+// OUTGOING UPDATES
+// ============================================================
+function sendUpdate(field, value) { if (conn && conn.open) conn.send({ type:'update', field, value }); }
+
+playBtn.onclick = () => sendUpdate('playState', state.playState === 'playing' ? 'paused' : 'playing');
+resetBtn.onclick = () => {
+  sendUpdate('reset', true); scrollPct = 0; previewScrollPos = 0; previewBox.scrollTop = 0;
+  currentSentenceIdx = 0; renderHighlight(); updateScrubber();
+};
+mirrorHBtn.onclick = () => sendUpdate('mirroredH', !state.mirroredH);
+mirrorVBtn.onclick = () => sendUpdate('mirroredV', !state.mirroredV);
+fontFamilySelect.onchange = () => sendUpdate('fontFamily', fontFamilySelect.value);
+function stepFont(d) { const v=Math.max(20,Math.min(200,parseInt(fontSizeSlider.value)+d)); fontSizeSlider.value=v; fontSizeValue.textContent=v+'px'; sendUpdate('fontSize',v); }
+function stepSpeed(d) { const v=Math.max(0,Math.min(400,parseInt(speedSlider.value)+d)); speedSlider.value=v; speedValue.textContent=v; sendUpdate('scrollSpeed',v); }
+fontIncBtn.onclick = () => stepFont(2); fontDecBtn.onclick = () => stepFont(-2);
+speedIncBtn.onclick = () => stepSpeed(5); speedDecBtn.onclick = () => stepSpeed(-5);
+fontSizeSlider.oninput = () => { fontSizeValue.textContent=fontSizeSlider.value+'px'; sendUpdate('fontSize', parseInt(fontSizeSlider.value)); };
+speedSlider.oninput = () => { speedValue.textContent=speedSlider.value; sendUpdate('scrollSpeed', parseInt(speedSlider.value)); };
+
+textArea.oninput = () => {
+  clearTimeout(textDebounce);
+  const val = textArea.value;
+  textDebounce = setTimeout(() => sendUpdate('text', val), 250);
+  // Update session
+  const scr = getActiveScript(); scr.text = val;
+  sentenceStarts = buildSentenceStarts(val);
+  renderHighlight();
+  saveStatus.textContent = 'Saving…';
+  clearTimeout(autoSaveDebounce);
+  autoSaveDebounce = setTimeout(() => autosave(val), AUTOSAVE_DELAY);
+};
+
+undoBtn.onclick = () => { textArea.focus(); document.execCommand('undo'); };
+redoBtn.onclick = () => { textArea.focus(); document.execCommand('redo'); };
+
+copyBtn.onclick = async () => {
+  try { await navigator.clipboard.writeText(state.text); const o=copyBtn.textContent; copyBtn.textContent='Copied'; setTimeout(()=>{copyBtn.textContent=o;},1200); }
+  catch(e) { copyBtn.textContent='Failed'; setTimeout(()=>{copyBtn.textContent='Copy';},1200); }
+};
+exportBtn.onclick = exportWithNotes;
+
+// ============================================================
+// KEYBOARD
+// ============================================================
+document.addEventListener('keydown', e => {
+  const inEditor = document.activeElement === textArea;
+  if ((e.code === 'Space' || e.key === ' ') && !inEditor) { e.preventDefault(); sendUpdate('playState', state.playState === 'playing' ? 'paused' : 'playing'); return; }
+  if (!inEditor && (e.ctrlKey||e.metaKey) && e.shiftKey && e.key === 'z') { textArea.focus(); document.execCommand('redo'); textArea.blur(); return; }
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !inEditor) {
+    e.preventDefault();
+    jumpToSentence(e.key === 'ArrowDown' ? currentSentenceIdx + 1 : currentSentenceIdx - 1);
+  }
+});
+
+// ============================================================
+// INCOMING DATA
+// ============================================================
+function handleData(msg) {
+  if (msg.type === 'state') {
+    // Only sync non-text fields from prompter (text lives in session)
+    state = { ...state, ...msg.data, text: state.text };
+    sentenceStarts = buildSentenceStarts(state.text);
+    renderControls();
+  } else if (msg.type === 'scroll') {
+    scrollPct = msg.position;
+    if (!draggingPreview) correctPreviewScroll(scrollPct);
+    renderHighlight(); updateScrubber();
+  } else if (msg.type === 'viewport') {
+    phoneViewport = { width: msg.width, height: msg.height };
+    updateMonitorScale();
+  }
+}
+
+window.addEventListener('resize', () => { updateMonitorScale(); updateScrubber(); });
+
+// ============================================================
+// QR / CODE
+// ============================================================
+function buildPrompterUrl(c) {
+  const dir = window.location.pathname.replace(/\/[^/]*$/, '/');
+  return window.location.origin + dir + 'prompter.html?code=' + c;
+}
+let qrInstance = null;
+function renderQr(c) {
+  qrCanvas.innerHTML = '';
+  try { new QRCode(qrCanvas, { text:buildPrompterUrl(c), width:180, height:180, colorDark:'#000', colorLight:'#fff', correctLevel:QRCode.CorrectLevel.M }); } catch(e) {}
+}
+function openQrModal() {
+  qrModalCanvas.innerHTML = '';
+  try { new QRCode(qrModalCanvas, { text:buildPrompterUrl(code), width:180, height:180, colorDark:'#000', colorLight:'#fff', correctLevel:QRCode.CorrectLevel.M }); } catch(e) {}
+  qrModalCode.textContent = code;
+  qrModal.style.display = 'flex';
+}
+showCodeBtn.onclick = openQrModal;
+persistentCode.onclick = openQrModal;
+closeQrModal.onclick = () => { qrModal.style.display = 'none'; };
+qrModal.addEventListener('pointerdown', e => { if (e.target === qrModal) qrModal.style.display = 'none'; });
+
+function applyCode(c) {
+  code = c;
+  hostCode.textContent = c;
+  bannerCode.textContent = c;
+  persistentCode.textContent = c;
+  renderQr(c);
+}
+
+dismissBanner.onclick = () => reconnectBanner.classList.remove('visible');
+skipBtn.onclick = enterMainPanel;
+
+function enterMainPanel() {
+  connectionPanel.classList.add('hidden');
+  mainPanel.classList.add('visible');
+  tabBar.classList.add('visible');
+  // Reorder DOM: tab bar above main panel
+  document.body.insertBefore(tabBar, mainPanel);
+  renderTabs();
+  syncScriptToState();
+  textArea.value = state.text;
+  sentenceStarts = buildSentenceStarts(state.text);
+  updateMonitorScale();
+  updateScrubber();
   checkAndOfferRestore();
+}
+
+// ============================================================
+// PEER / CONNECTION
+// ============================================================
+function startHost() {
+  peer = new Peer('tp-' + code);
+  peer.on('open', () => { applyCode(code); connectionStatus.textContent = 'Waiting for the prompter…'; });
+  peer.on('connection', acceptConnection);
+  peer.on('error', err => {
+    if (err.type === 'unavailable-id') { code = generateCode(); peer.destroy(); startHost(); }
+    else { connectionStatus.textContent = 'Error: ' + err.type; }
+  });
+}
+
+function acceptConnection(c) {
+  conn = c;
+  conn.on('open', () => {
+    sideStatus.textContent = 'CONNECTED';
+    reconnectBanner.classList.remove('visible');
+    if (connectionPanel && !connectionPanel.classList.contains('hidden')) enterMainPanel();
+    // Send current state to the newly connected prompter
+    if (conn.open) conn.send({ type:'state', data:{ ...state, text:getActiveScript().text } });
+  });
+  conn.on('data', handleData);
+  conn.on('close', () => {
+    conn = null;
+    sideStatus.textContent = 'DISCONNECTED';
+    reconnectBanner.classList.add('visible');
+    // Peer keeps listening — prompter can reconnect without page reload
+  });
+}
+
+// Keep listening for reconnects even when main panel is up
+function ensureListening() {
+  if (peer && !peer.destroyed) {
+    peer.off('connection'); // clear old listener to avoid duplicates
+    peer.on('connection', acceptConnection);
+  }
+}
+setInterval(ensureListening, 3000);
+
+newCodeBtn.onclick = () => { if (peer) peer.destroy(); conn = null; code = generateCode(); connectionStatus.textContent = 'Generating…'; startHost(); };
+startHost();
+
+// ============================================================
+// INIT
+// ============================================================
+Object.assign(mainPanel.style, { height:'' });
+// Fix tab bar ordering on load
+document.body.insertBefore(tabBar, mainPanel);
+
 </script>
 </body>
 </html>

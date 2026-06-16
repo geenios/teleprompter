@@ -370,46 +370,21 @@
     el.textContent = '…';
   }
 
-  document.addEventListener('keydown', e => {
-    if (listeningEl) {
-      e.preventDefault();
-      if (e.key === 'Escape') {
-        listeningEl.classList.remove('listening');
-        listeningEl = null; listeningAction = null; listeningSlot = null;
-        return;
-      }
-      if (!shortcuts[listeningAction]) shortcuts[listeningAction] = [];
-      shortcuts[listeningAction][listeningSlot] = e.key;
-      saveShortcuts();
-      listeningEl.classList.remove('listening');
-      listeningEl = null;
-      renderShortcutTable();
-      return;
-    }
 
-    // Don't fire when settings overlay is open (except listening mode handled above)
-    if (!settingsOverlay.classList.contains('hidden')) return;
-    // Don't fire when connect overlay is visible
-    if (!connectOverlay.classList.contains('hidden')) return;
+  // ---- Smooth hold-to-scroll ----
+  let scrollInterval = null;
+  const HOLD_SCROLL_SPEED = 80; // px per tick
+  const HOLD_SCROLL_INTERVAL = 50; // ms
 
-    handleShortcutKey(e.key);
-  });
-
-  function handleShortcutKey(key) {
-    for (const action of SHORTCUT_ACTIONS) {
-      const keys = shortcuts[action.id] || [];
-      if (keys.some(k => k && k.toLowerCase() === key.toLowerCase())) {
-        performAction(action.id);
-        return;
-      }
-    }
+  function startScroll(direction) {
+    if (scrollInterval) return;
+    scrollInterval = setInterval(() => {
+      setScroll(scrollPosition + direction * HOLD_SCROLL_SPEED);
+      broadcastScroll();
+    }, HOLD_SCROLL_INTERVAL);
   }
-
-  function jumpLines(direction) {
-    const lineHeight = state.fontSize * 1.5;
-    const jumpPx = 5 * lineHeight;
-    setScroll(scrollPosition + direction * jumpPx);
-    broadcastScroll();
+  function stopScroll() {
+    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
   }
 
   function performAction(actionId) {
@@ -420,14 +395,46 @@
         updateState({ scrollSpeed: Math.min(400, state.scrollSpeed + 10) }); break;
       case 'speedDown':
         updateState({ scrollSpeed: Math.max(0, state.scrollSpeed - 10) }); break;
-      case 'jumpDown':
-        jumpLines(1); break;
-      case 'jumpUp':
-        jumpLines(-1); break;
       case 'jumpToTop':
         setScroll(0); broadcastScroll(); break;
+      // jumpDown / jumpUp handled via hold-to-scroll in key events
     }
   }
+
+  // ---- Key events ----
+  document.addEventListener('keydown', e => {
+    if (listeningEl) {
+      e.preventDefault();
+      if (e.key === 'Escape') { listeningEl.classList.remove('listening'); listeningEl = null; return; }
+      if (!shortcuts[listeningAction]) shortcuts[listeningAction] = [];
+      shortcuts[listeningAction][listeningSlot] = e.key;
+      saveShortcuts();
+      listeningEl.classList.remove('listening');
+      listeningEl = null;
+      renderShortcutTable();
+      return;
+    }
+    if (!settingsOverlay.classList.contains('hidden')) return;
+    if (!connectOverlay.classList.contains('hidden')) return;
+
+    const key = e.key.toLowerCase();
+    for (const action of SHORTCUT_ACTIONS) {
+      const keys = (shortcuts[action.id] || []).map(k => k ? k.toLowerCase() : '');
+      if (!keys.includes(key)) continue;
+      if (action.id === 'jumpDown') { e.preventDefault(); startScroll(1); return; }
+      if (action.id === 'jumpUp')   { e.preventDefault(); startScroll(-1); return; }
+      performAction(action.id);
+      return;
+    }
+  });
+
+  document.addEventListener('keyup', e => {
+    const key = e.key.toLowerCase();
+    const sc = shortcuts;
+    const isJump = (sc.jumpDown || []).map(k=>k&&k.toLowerCase()).includes(key) ||
+                   (sc.jumpUp   || []).map(k=>k&&k.toLowerCase()).includes(key);
+    if (isJump) stopScroll();
+  });
 
   // ---- Settings UI ----
   settingsBtn.onclick = () => {
@@ -539,6 +546,28 @@
     toggleBar.textContent = controls.classList.contains('hidden') ? '▴' : '▾';
   };
 
+  // ---- Auto-reconnect ----
+  let reconnectTimer = null;
+  function scheduleReconnect(code) {
+    if (!code || !/^\d{6}$/.test(code)) return;
+    clearTimeout(reconnectTimer);
+    setStatus('RECONNECTING…', false);
+    reconnectTimer = setTimeout(() => {
+      if (conn && conn.open) return;
+      conn = peer.connect('tp-' + code, { reliable: true });
+      conn.on('open', () => {
+        clearTimeout(reconnectTimer);
+        setStatus('CONNECTED', true);
+        connectOverlay.classList.add('hidden');
+        broadcastState();
+        reportViewport();
+      });
+      conn.on('data', handleRemote);
+      conn.on('close', () => { conn = null; setStatus('OFFLINE', false); scheduleReconnect(code); });
+      conn.on('error', () => { conn = null; setStatus('OFFLINE', false); scheduleReconnect(code); });
+    }, 3000);
+  }
+
   // ---- Remote messages ----
   function handleRemote(msg) {
     if (msg.type !== 'update') return;
@@ -583,7 +612,12 @@
         reportViewport();
       });
       conn.on('data', handleRemote);
-      conn.on('close', () => { conn = null; setStatus('OFFLINE', false); });
+      conn.on('close', () => {
+        conn = null;
+        setStatus('OFFLINE', false);
+        // Auto-reconnect every 3s without user interaction
+        scheduleReconnect(codeInput.value.trim());
+      });
       conn.on('error', () => {
         connectBtn.disabled = false;
         connectStatus.textContent = 'Connection error. Check the code and try again.';
