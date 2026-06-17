@@ -798,7 +798,8 @@ fontSizeSlider.oninput=()=>{fontSizeValue.textContent=fontSizeSlider.value+'px';
 speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value;sendUpdate('scrollSpeed',+speedSlider.value);};
 textArea.oninput=()=>{
   const v=textArea.value;setTimeout(()=>sendUpdate('text',v),250);
-  getActiveScript().text=v;sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();
+  getActiveScript().text=v;state.text=v;previewText.textContent=v;
+  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();
 };
 undoBtn.onclick=()=>{textArea.focus();document.execCommand('undo');};
 redoBtn.onclick=()=>{textArea.focus();document.execCommand('redo');};
