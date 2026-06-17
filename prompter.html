@@ -167,6 +167,23 @@
 </style>
 </head>
 <body>
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  var d = document.getElementById('_dbg');
+  if (!d) { d = document.createElement('div'); d.id='_dbg';
+    d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#c00;color:#fff;padding:10px;font:13px monospace;white-space:pre-wrap;max-height:40vh;overflow:auto;';
+    document.body.appendChild(d); }
+  d.textContent += 'ERROR: ' + msg + '\n  at ' + src + ':' + line + ':' + col + '\n';
+};
+window.addEventListener('unhandledrejection', function(e) {
+  var d = document.getElementById('_dbg');
+  if (!d) { d = document.createElement('div'); d.id='_dbg';
+    d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#c00;color:#fff;padding:10px;font:13px monospace;white-space:pre-wrap;max-height:40vh;overflow:auto;';
+    document.body.appendChild(d); }
+  d.textContent += 'PROMISE ERROR: ' + e.reason + '\n';
+});
+</script>
+
   <div id="prompter">
     <div id="scrollArea"><div id="textContent"></div></div>
 
@@ -453,8 +470,8 @@
     playBtn.classList.toggle('active', state.playState === 'playing');
     mirrorHBtn.classList.toggle('active', state.mirroredH);
     mirrorVBtn.classList.toggle('active', state.mirroredV);
-    fontSizeVal.textContent = state.fontSize;
-    speedVal.textContent = state.scrollSpeed;
+    if (fontSizeVal) fontSizeVal.textContent = state.fontSize;
+    if (speedVal) speedVal.textContent = state.scrollSpeed;
   }
 
   function broadcastState() {
