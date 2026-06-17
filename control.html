@@ -178,7 +178,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
   <div class="open-actions">
     <button class="open-btn primary" id="newProjectBtn">New project</button>
     <button class="open-btn secondary" id="loadProjectBtn">Load project</button>
-    <input type="file" id="fileInput" accept=".tpsession,.json">
+    <input type="file" id="fileInput" accept=".json,.tpsession">
   </div>
 </div>
 
@@ -584,9 +584,10 @@ addTabBtn.onclick=addScript;
 // ── SESSION SAVE / LOAD ───────────────────────────────────
 saveSessionBtn.onclick=()=>{
   persistSession();
-  const blob=new Blob([JSON.stringify(session,null,2)],{type:'application/json'});
+  const data={_type:'teleprompter-session',_version:1,...session};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='teleprompter-session.tpsession';
+  const a=document.createElement('a');a.href=url;a.download='teleprompter-session.json';
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
 };
 function doLoadFile(file){
@@ -781,10 +782,14 @@ exportBtn.onclick=exportWithNotes;
 
 // ── KEYBOARD ──────────────────────────────────────────────
 document.addEventListener('keydown',e=>{
+  const inAnyInput=['INPUT','TEXTAREA'].includes(document.activeElement.tagName);
   const inEditor=document.activeElement===textArea;
-  if((e.code==='Space'||e.key===' ')&&!inEditor){e.preventDefault();sendUpdate('playState',state.playState==='playing'?'paused':'playing');return;}
+  if((e.code==='Space'||e.key===' ')&&!inAnyInput){e.preventDefault();
+    const v=state.playState==='playing'?'paused':'playing';
+    state.playState=v;playBtn.textContent=v==='playing'?'Pause':'Play';
+    playBtn.classList.toggle('active',v==='playing');sendUpdate('playState',v);return;}
   if(!inEditor&&(e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key==='z'){textArea.focus();document.execCommand('redo');textArea.blur();return;}
-  if((e.key==='ArrowUp'||e.key==='ArrowDown')&&!inEditor){e.preventDefault();jumpToSentence(e.key==='ArrowDown'?sentenceIdx+1:sentenceIdx-1);}
+  if((e.key==='ArrowUp'||e.key==='ArrowDown')&&!inAnyInput){e.preventDefault();jumpToSentence(e.key==='ArrowDown'?sentenceIdx+1:sentenceIdx-1);}
 });
 
 // ── INCOMING ──────────────────────────────────────────────

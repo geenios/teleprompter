@@ -379,19 +379,26 @@
 
 
   // ---- Smooth hold-to-scroll ----
+  // Uses a debounced timeout: each keydown extends a 250ms window.
+  // Works for both remotes that hold keydown AND remotes that fire rapid keydown+keyup pairs.
   let scrollInterval = null;
-  const HOLD_SCROLL_SPEED = 80; // px per tick
-  const HOLD_SCROLL_INTERVAL = 50; // ms
+  let scrollStopTimeout = null;
+  const HOLD_SCROLL_SPEED = 80;
+  const HOLD_SCROLL_INTERVAL = 50;
 
-  function startScroll(direction) {
-    if (scrollInterval) return;
-    scrollInterval = setInterval(() => {
-      setScroll(scrollPosition + direction * HOLD_SCROLL_SPEED);
-      broadcastScroll();
-    }, HOLD_SCROLL_INTERVAL);
+  function startOrExtendScroll(direction) {
+    if (!scrollInterval) {
+      scrollInterval = setInterval(() => {
+        setScroll(scrollPosition + direction * HOLD_SCROLL_SPEED);
+        broadcastScroll();
+      }, HOLD_SCROLL_INTERVAL);
+    }
+    clearTimeout(scrollStopTimeout);
+    scrollStopTimeout = setTimeout(stopScroll, 250);
   }
   function stopScroll() {
     if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+    if (scrollStopTimeout) { clearTimeout(scrollStopTimeout); scrollStopTimeout = null; }
   }
 
   function performAction(actionId) {
@@ -428,8 +435,8 @@
     for (const action of SHORTCUT_ACTIONS) {
       const keys = (shortcuts[action.id] || []).map(k => k ? k.toLowerCase() : '');
       if (!keys.includes(key)) continue;
-      if (action.id === 'jumpDown') { e.preventDefault(); startScroll(1); return; }
-      if (action.id === 'jumpUp')   { e.preventDefault(); startScroll(-1); return; }
+      if (action.id === 'jumpDown') { e.preventDefault(); startOrExtendScroll(1); return; }
+      if (action.id === 'jumpUp')   { e.preventDefault(); startOrExtendScroll(-1); return; }
       performAction(action.id);
       return;
     }
