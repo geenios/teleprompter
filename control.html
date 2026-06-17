@@ -90,7 +90,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 #editorStack{flex:1;position:relative;min-height:0;}
 #highlightLayer,#textArea{position:absolute;inset:0;padding:16px;font-size:16px;line-height:1.6;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;white-space:pre-wrap;word-wrap:break-word;overflow-y:auto;box-sizing:border-box;}
 #highlightLayer{color:transparent;background:var(--panel);border:1px solid transparent;pointer-events:none;z-index:1;}
-#textArea{background:transparent;color:var(--text);border:1px solid transparent;resize:none;outline:none;z-index:2;caret-color:var(--accent);}
+#textArea{background:transparent;color:var(--text);border:1px solid transparent;resize:none;outline:none;z-index:2;caret-color:var(--accent);scrollbar-width:none;}
+#textArea::-webkit-scrollbar{display:none;}
 #textArea:focus{border-color:var(--accent);}
 .highlight-span{background:rgba(255,200,0,.75);border-radius:2px;}
 #scrubberTrack{width:14px;background:var(--panel);border-left:1px solid var(--border);position:relative;flex-shrink:0;cursor:pointer;}
@@ -98,8 +99,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 #scrubberThumb:active{cursor:grabbing;opacity:1;}
 
 /* ── DIRECTOR VIEW ── */
-#directorView{display:none;flex:1;overflow-y:auto;padding:8px 12px;flex-direction:column;background:var(--panel);}
+#directorView{display:none;flex:1;min-height:0;overflow-y:auto;padding:8px 12px;flex-direction:column;background:var(--panel);scrollbar-width:none;}
 #directorView.active{display:flex;}
+#directorView::-webkit-scrollbar{display:none;}
 .dv-section{padding:6px 0;border-bottom:1px solid var(--border);}
 .dv-section:last-child{border-bottom:none;}
 .dv-sentence-row{
@@ -508,7 +510,7 @@ function highlightDirector(){
       if(!first)first=row;
     }
   });
-  if(first){clearTimeout(dvDebounce);dvDebounce=setTimeout(()=>{first.scrollIntoView({block:'nearest',behavior:'smooth'});},200);}
+  if(first){clearTimeout(dvDebounce);dvDebounce=setTimeout(()=>{first.scrollIntoView({block:'center',behavior:'smooth'});},200);}
 }
 
 function exportWithNotes(){
