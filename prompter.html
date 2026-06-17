@@ -30,7 +30,8 @@
     --muted: #8a8a8a;
     --radius: 10px;
   }
-  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
+  #scrollArea { touch-action: pan-y; }
 
   html {
     height: 100%;
@@ -88,8 +89,9 @@
 
   /* ---- Code input (connect screen) ---- */
   #codeInput {
-    font-family: "SF Mono", "Courier New", monospace;
-    font-size: 34px; letter-spacing: 0.22em; text-align: center;
+    font-family: 'Inter', sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-size: 34px; letter-spacing: 0.18em; text-align: center;
     background: #000; border: 2px solid var(--border); color: var(--accent);
     border-radius: 8px; padding: 12px; outline: none; width: 100%;
   }
@@ -167,22 +169,6 @@
 </style>
 </head>
 <body>
-<script>
-window.onerror = function(msg, src, line, col, err) {
-  var d = document.getElementById('_dbg');
-  if (!d) { d = document.createElement('div'); d.id='_dbg';
-    d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#c00;color:#fff;padding:10px;font:13px monospace;white-space:pre-wrap;max-height:40vh;overflow:auto;';
-    document.body.appendChild(d); }
-  d.textContent += 'ERROR: ' + msg + '\n  at ' + src + ':' + line + ':' + col + '\n';
-};
-window.addEventListener('unhandledrejection', function(e) {
-  var d = document.getElementById('_dbg');
-  if (!d) { d = document.createElement('div'); d.id='_dbg';
-    d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#c00;color:#fff;padding:10px;font:13px monospace;white-space:pre-wrap;max-height:40vh;overflow:auto;';
-    document.body.appendChild(d); }
-  d.textContent += 'PROMISE ERROR: ' + e.reason + '\n';
-});
-</script>
 
   <div id="prompter">
     <div id="scrollArea"><div id="textContent"></div></div>
@@ -538,8 +524,13 @@ window.addEventListener('unhandledrejection', function(e) {
     clearTimeout(toolbarTimer);
     toolbarTimer = setTimeout(() => { controls.classList.add('hidden'); toggleBar.textContent = '▴'; }, 5000);
   }
+  // Tap-to-show: only trigger on short taps, not scroll gestures
+  let _tapStart = 0, _tapY = 0;
+  scrollArea.addEventListener('pointerdown', e => { _tapStart = Date.now(); _tapY = e.clientY; });
   scrollArea.addEventListener('pointerup', e => {
-    if (e.target === scrollArea || e.target === textContent) showToolbar();
+    const dt = Date.now() - _tapStart;
+    const dy = Math.abs(e.clientY - _tapY);
+    if (dt < 250 && dy < 10) showToolbar(); // genuine tap only
   });
   toggleBar.addEventListener('click', () => {
     if (controls.classList.contains('hidden')) { showToolbar(); }
@@ -559,11 +550,6 @@ window.addEventListener('unhandledrejection', function(e) {
   fontDecBtn.onclick = () => updateState({ fontSize: Math.max(20, state.fontSize - 4) });
   speedIncBtn.onclick = () => updateState({ scrollSpeed: Math.min(400, state.scrollSpeed + 10) });
   speedDecBtn.onclick = () => updateState({ scrollSpeed: Math.max(0, state.scrollSpeed - 10) });
-
-  toggleBar.onclick = () => {
-    controls.classList.toggle('hidden');
-    toggleBar.textContent = controls.classList.contains('hidden') ? '▴' : '▾';
-  };
 
   // ---- Remote messages ----
   function handleRemote(msg) {
@@ -672,6 +658,8 @@ window.addEventListener('unhandledrejection', function(e) {
     try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
   }
   requestWakeLock();
+  // Nudge scroll to dismiss mobile browser toolbar
+  try { document.body.style.height = (window.innerHeight + 1) + 'px'; window.scrollTo(0,1); setTimeout(()=>{ document.body.style.height=''; },600); } catch(e){}
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') requestWakeLock();
   });

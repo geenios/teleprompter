@@ -6,7 +6,7 @@
 <title>Teleprompter Control</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:#0a0a0a;--panel:#141414;--panel-2:#1a1a1a;
@@ -15,9 +15,14 @@
 *{margin:0;padding:0;box-sizing:border-box;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,'Segoe UI',sans-serif;}
 
+/* ── SAVE MODAL ── */
+#saveModalInput:focus{border-color:var(--accent)!important;}
+
 /* ── OPENING ── */
 #openingPanel{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px 24px;}
 #openingPanel.hidden{display:none;}
+.open-title{font-family:'EB Garamond',Garamond,serif;font-size:42px;font-weight:700;color:var(--text);text-align:center;line-height:1.1;letter-spacing:-.01em;}
+.open-subtitle{font-size:13px;color:var(--muted);text-align:center;margin-top:2px;margin-bottom:6px;}
 .open-actions{display:flex;gap:12px;}
 .open-btn{padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;border:none;}
 .open-btn.primary{background:var(--accent);color:#000;}
@@ -46,7 +51,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 #reconnectBanner{display:none;position:absolute;top:36px;left:0;right:0;z-index:20;background:rgba(10,10,10,.97);border-bottom:1px solid var(--accent);padding:8px 18px;align-items:center;gap:12px;justify-content:center;}
 #reconnectBanner.visible{display:flex;}
 #reconnectBanner span{font-size:13px;color:var(--muted);}
-.code-inline{font-family:"SF Mono","Courier New",monospace;color:var(--accent);font-size:14px;letter-spacing:.1em;}
+.code-inline{font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;font-weight:700;color:var(--accent);font-size:14px;letter-spacing:.08em;}
 #dismissBanner{background:none;border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;margin-left:auto;}
 
 /* ── TAB BAR ── */
@@ -174,7 +179,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .select-input:focus{border-color:var(--accent);}
 #statusBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 #sideStatus{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;}
-#persistentCode{font-family:"SF Mono","Courier New",monospace;font-size:18px;color:var(--accent);border:1px solid var(--border);border-radius:6px;padding:5px 12px;letter-spacing:.12em;cursor:pointer;transition:border-color .15s;}
+#persistentCode{font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;font-size:18px;font-weight:600;color:var(--accent);border:1px solid var(--border);border-radius:6px;padding:5px 12px;letter-spacing:.08em;cursor:pointer;transition:border-color .15s;}
 #persistentCode:hover{border-color:var(--accent);}
 
 /* ── INLINE RESTORE NOTICE ── */
@@ -186,38 +191,37 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 </style>
 </head>
 <body>
-<script>
-window.onerror = function(msg, src, line, col, err) {
-  var d = document.getElementById('_dbg');
-  if (!d) { d = document.createElement('div'); d.id='_dbg';
-    d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#c00;color:#fff;padding:10px;font:13px monospace;white-space:pre-wrap;max-height:40vh;overflow:auto;';
-    document.body.appendChild(d); }
-  d.textContent += 'ERROR: ' + msg + '\n  at ' + src + ':' + line + ':' + col + '\n';
-};
-window.addEventListener('unhandledrejection', function(e) {
-  var d = document.getElementById('_dbg');
-  if (!d) { d = document.createElement('div'); d.id='_dbg';
-    d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#c00;color:#fff;padding:10px;font:13px monospace;white-space:pre-wrap;max-height:40vh;overflow:auto;';
-    document.body.appendChild(d); }
-  d.textContent += 'PROMISE ERROR: ' + e.reason + '\n';
-});
-</script>
 
 
 <!-- ── OPENING ── -->
 <div id="openingPanel">
+  <div class="open-title">Super Duper Teleprompter</div>
+  <div class="open-subtitle">by Patrik Kedves</div>
   <div class="open-actions">
     <button class="open-btn primary" id="newProjectBtn">New project</button>
     <button class="open-btn secondary" id="loadProjectBtn">Load project</button>
     <input type="file" id="fileInput" accept=".json,.tpsession">
   </div>
+  <div id="connIndicator" class="conn-waiting">
+    <span class="conn-dot"></span>
+    <span id="connText">Generating code…</span>
+  </div>
   <div id="codeBox">
     <div id="qrCanvas"></div>
     <div id="hostCode">------</div>
   </div>
-  <div id="connIndicator" class="conn-waiting">
-    <span class="conn-dot"></span>
-    <span id="connText">Generating code…</span>
+</div>
+
+<!-- ── SAVE SESSION MODAL ── -->
+<div id="saveModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:28px 24px;width:340px;display:flex;flex-direction:column;gap:16px;">
+    <div style="font-size:15px;font-weight:600;color:var(--text);">Save session as</div>
+    <input id="saveModalInput" type="text" placeholder="session name"
+      style="background:#000;border:2px solid var(--border);color:var(--text);border-radius:8px;padding:11px 14px;font-size:15px;font-family:'Inter',sans-serif;outline:none;width:100%;">
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="saveModalCancel" style="background:none;border:1px solid var(--border);color:var(--muted);padding:9px 18px;border-radius:8px;font-size:14px;cursor:pointer;">Cancel</button>
+      <button id="saveModalConfirm" style="background:var(--accent);border:none;color:#000;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Save</button>
+    </div>
   </div>
 </div>
 
@@ -301,7 +305,7 @@ window.addEventListener('unhandledrejection', function(e) {
       </button>
     </div>
     <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Font size</span><span class="val" id="fontSizeValue">48px</span></div>
+      <div class="ctrl-row"><span class="label">Font size</span><span class="val" id="fontSizeValue">75</span></div>
       <div class="slider-btns">
         <button class="step-btn" id="fontDecBtn">−</button>
         <input type="range" id="fontSizeSlider" min="20" max="200" step="1">
@@ -322,6 +326,7 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
     <hr class="divider">
     <div id="statusBar">
+      <span id="connDot" style="width:8px;height:8px;border-radius:50%;background:#e55;flex-shrink:0;display:inline-block;"></span>
       <div id="sideStatus">DISCONNECTED</div>
       <span id="peerStatus" title="Signaling server status" style="font-size:9px;color:var(--muted);">●</span>
       <span id="persistentCode" title="Click to show QR">------</span>
@@ -386,7 +391,7 @@ const fontSizeSlider=$('fontSizeSlider'), fontSizeValue=$('fontSizeValue');
 const fontIncBtn=$('fontIncBtn'), fontDecBtn=$('fontDecBtn');
 const speedSlider=$('speedSlider'), speedValue=$('speedValue');
 const speedIncBtn=$('speedIncBtn'), speedDecBtn=$('speedDecBtn');
-const fontFamilySelect=$('fontFamilySelect'), sideStatus=$('sideStatus');
+const fontFamilySelect=$('fontFamilySelect'), sideStatus=$('sideStatus'), connDot=$('connDot');
 
 Object.entries(FONTS).forEach(([k,f])=>{
   const o=document.createElement('option');o.value=k;o.textContent=f.label;o.style.fontFamily=f.stack;
@@ -411,7 +416,7 @@ function autosave(){
 let session=(()=>{try{const r=localStorage.getItem(SESSION_KEY);if(r){const s=JSON.parse(r);if(s&&s.scripts)return s;}}catch(e){}return defaultSession(true);})();
 
 // ── PROMPTER STATE ────────────────────────────────────────
-let state={text:'',fontSize:48,fontFamily:'opensans',scrollSpeed:50,mirroredH:false,mirroredV:false,playState:'paused'};
+let state={text:'',fontSize:75,fontFamily:'opensans',scrollSpeed:170,mirroredH:false,mirroredV:false,playState:'paused'};
 function syncScript(){state.text=getActiveScript().text;}
 syncScript();
 
@@ -636,14 +641,25 @@ addTabBtn.onclick=addScript;
 saveSessionBtn.onclick=()=>{
   persistSession();
   const def=(session.scripts.length===1?session.scripts[0].name:'session').replace(/[^a-z0-9_ -]/gi,'').trim()||'session';
-  const name=prompt('Save session as:',def);
-  if(name===null)return;
-  const filename=(name.trim()||def).replace(/\.json$/i,'')+'.json';
-  const data={_type:'teleprompter-session',_version:1,...session};
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=filename;
-  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  const modal=document.getElementById('saveModal');
+  const inp=document.getElementById('saveModalInput');
+  inp.value=def;
+  modal.style.display='flex';
+  inp.focus();inp.select();
+  const doSave=()=>{
+    const name=inp.value.trim()||def;
+    const filename=name.replace(/\.json$/i,'')+'.json';
+    const data={_type:'teleprompter-session',_version:1,...session};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=filename;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    modal.style.display='none';
+  };
+  document.getElementById('saveModalConfirm').onclick=doSave;
+  document.getElementById('saveModalCancel').onclick=()=>{modal.style.display='none';};
+  inp.onkeydown=e=>{if(e.key==='Enter')doSave();if(e.key==='Escape')modal.style.display='none';};
+  modal.onclick=e=>{if(e.target===modal)modal.style.display='none';};
 };
 function doLoadFile(file){
   const reader=new FileReader();
@@ -689,7 +705,7 @@ dismissRestoreBtn.onclick=()=>{if(restoreNotice)restoreNotice.classList.remove('
 function renderControls(){
   if(document.activeElement!==textArea)textArea.value=state.text;
   if(document.activeElement!==fontSizeSlider)fontSizeSlider.value=state.fontSize;
-  fontSizeValue.textContent=state.fontSize+'px';
+  fontSizeValue.textContent=state.fontSize;
   if(document.activeElement!==speedSlider)speedSlider.value=state.scrollSpeed;
   speedValue.textContent=state.scrollSpeed;
   if(document.activeElement!==fontFamilySelect)fontFamilySelect.value=state.fontFamily;
@@ -967,7 +983,7 @@ function startHost(){
   peer.on('connection',c=>{
     conn=c;
     conn.on('open',()=>{
-      sideStatus.textContent='CONNECTED';
+      sideStatus.textContent='CONNECTED';{const cd=$('connDot');if(cd)cd.style.background='#22c55e';}
       reconnectBanner.classList.remove('visible');
       setConnStatus('conn-connected','Connected');
       syncScript();
@@ -978,7 +994,7 @@ function startHost(){
     conn.on('data',handleData);
     conn.on('close',()=>{
       conn=null;
-      sideStatus.textContent='DISCONNECTED';
+      sideStatus.textContent='DISCONNECTED';{const cd=$('connDot');if(cd)cd.style.background='#e55';}
       reconnectBanner.classList.add('visible');
       setConnStatus('conn-waiting','Waiting for prompter…');
     });
@@ -1004,7 +1020,7 @@ setInterval(()=>{
     peer.on('connection',c=>{
       conn=c;
       conn.on('open',()=>{
-        sideStatus.textContent='CONNECTED';
+        sideStatus.textContent='CONNECTED';{const cd=$('connDot');if(cd)cd.style.background='#22c55e';}
         reconnectBanner.classList.remove('visible');
         setConnStatus('conn-connected','Connected');
         syncScript();
@@ -1013,7 +1029,7 @@ setInterval(()=>{
         setTimeout(()=>{if(conn&&conn.open)conn.send(payload);},400);
       });
       conn.on('data',handleData);
-      conn.on('close',()=>{conn=null;sideStatus.textContent='DISCONNECTED';reconnectBanner.classList.add('visible');setConnStatus('conn-waiting','Waiting for prompter…');});
+      conn.on('close',()=>{conn=null;sideStatus.textContent='DISCONNECTED';{const cd=$('connDot');if(cd)cd.style.background='#e55';}reconnectBanner.classList.add('visible');setConnStatus('conn-waiting','Waiting for prompter…');});
     });
   }
 },2000);
