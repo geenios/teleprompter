@@ -333,7 +333,7 @@
 
   // ---- Scroll ----
   let scrollInterval = null;
-  const HOLD_SCROLL_SPEED = 80;
+  const HOLD_SCROLL_SPEED = 35;   // reduced for precision
   const HOLD_SCROLL_INTERVAL = 50;
 
   function startScroll(dir) {
@@ -361,38 +361,45 @@
     clearInterval(speedInterval); speedInterval = null;
   }
 
-  // ---- Paragraph jump ----
-  let paraInterval = null;
-
+  // ---- Paragraph jump (precise DOM-based, single jump per keypress) ----
   function getParagraphOffsets() {
     const offsets = [0], re = /\n{2,}/g; let m;
     while ((m = re.exec(state.text)) !== null) offsets.push(m.index + m[0].length);
     return offsets;
   }
-  function startParaJump(dir) {
-    if (paraInterval) return; // already jumping, wait for release
-    const jump = () => {
-      const offsets = getParagraphOffsets();
-      const max = Math.max(1, scrollArea.scrollHeight - scrollArea.clientHeight);
-      const charPos = (scrollPosition / max) * (state.text.length || 1);
-      let curr = 0;
-      for (let i = offsets.length - 1; i >= 0; i--) {
-        if (offsets[i] <= charPos) { curr = i; break; }
-      }
-      const next = Math.max(0, Math.min(offsets.length - 1, curr + dir));
-      setScroll((offsets[next] / (state.text.length || 1)) * max);
-      broadcastScroll();
-    };
-    jump();
-    paraInterval = setInterval(jump, 600);
+
+  // Returns the character's y-position in scrollArea content space (scroll-invariant)
+  function getParaY(charOffset) {
+    const tn = textContent.firstChild;
+    if (!tn || tn.nodeType !== Node.TEXT_NODE || !tn.length) return null;
+    const ci = Math.max(0, Math.min(charOffset, tn.length - 1));
+    const range = document.createRange();
+    range.setStart(tn, ci);
+    range.setEnd(tn, Math.min(ci + 1, tn.length));
+    const rects = range.getClientRects();
+    if (!rects.length) return null;
+    // Content-space y: invariant to scroll position
+    return rects[0].top - scrollArea.getBoundingClientRect().top + scrollArea.scrollTop;
   }
-  function stopParaJump() {
-    clearInterval(paraInterval); paraInterval = null;
+
+  function doParaJump(dir) {
+    const offsets = getParagraphOffsets();
+    const visibleY = scrollArea.scrollTop;
+    // Find which paragraph the current view top is in
+    let curr = 0;
+    for (let i = offsets.length - 1; i >= 0; i--) {
+      const y = getParaY(offsets[i]);
+      if (y !== null && y <= visibleY + 5) { curr = i; break; }
+    }
+    const next = Math.max(0, Math.min(offsets.length - 1, curr + dir));
+    const targetY = getParaY(offsets[next]);
+    setScroll(targetY !== null ? Math.max(0, targetY) :
+      (offsets[next] / (state.text.length || 1)) * Math.max(1, scrollArea.scrollHeight - scrollArea.clientHeight));
+    broadcastScroll();
   }
 
   // ---- Key events ----
   document.addEventListener('keydown', e => {
-    // Settings overlay: close on Escape
     if (!settingsOverlay.classList.contains('hidden')) {
       if (e.key === 'Escape') settingsOverlay.classList.add('hidden');
       return;
@@ -401,24 +408,24 @@
 
     const k = e.key.toLowerCase();
     switch (k) {
-      case 'w': e.preventDefault(); startScroll(-1);          break;
-      case 'e': e.preventDefault(); stopScroll();              break;
-      case 'x': e.preventDefault(); startScroll(1);           break;
-      case 'y': e.preventDefault(); stopScroll();              break;
-      case 'u': e.preventDefault(); startSpeedChange(3);      break;
-      case 'f': e.preventDefault(); stopSpeedChange();         break;
-      case 'l': e.preventDefault(); startSpeedChange(-3);     break;
-      case 'v': e.preventDefault(); stopSpeedChange();         break;
-      case 'z': e.preventDefault(); startParaJump(-1);        break;
-      case 't': e.preventDefault(); stopParaJump();            break;
-      case 'k': e.preventDefault(); startParaJump(1);         break;
-      case 'p': e.preventDefault(); stopParaJump();            break;
+      case 'w': e.preventDefault(); startScroll(-1);                                        break;
+      case 'e': e.preventDefault(); stopScroll();                                            break;
+      case 'x': e.preventDefault(); startScroll(1);                                         break;
+      case 'y': e.preventDefault(); stopScroll();                                            break;
+      case 'u': e.preventDefault(); startSpeedChange(1);                                    break;
+      case 'f': e.preventDefault(); stopSpeedChange();                                       break;
+      case 'l': e.preventDefault(); startSpeedChange(-1);                                   break;
+      case 'v': e.preventDefault(); stopSpeedChange();                                       break;
+      case 'z': e.preventDefault(); doParaJump(-1);                                         break;
+      case 't': e.preventDefault();                                                          break; // release signal, no-op
+      case 'k': e.preventDefault(); doParaJump(1);                                          break;
+      case 'p': e.preventDefault();                                                          break; // release signal, no-op
       case 'h': e.preventDefault();
-        updateState({ playState: state.playState === 'playing' ? 'paused' : 'playing' }); break;
+        updateState({ playState: state.playState === 'playing' ? 'paused' : 'playing' });   break;
       case 'o': e.preventDefault();
-        updateState({ fontSize: Math.max(20, state.fontSize - 4) });                      break;
+        updateState({ fontSize: Math.min(200, state.fontSize + 2) });                       break; // O = increase
       case 'j': e.preventDefault();
-        updateState({ fontSize: Math.min(200, state.fontSize + 4) });                     break;
+        updateState({ fontSize: Math.max(20,  state.fontSize - 2) });                       break; // J = decrease
     }
   });
 
