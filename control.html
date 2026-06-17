@@ -6,30 +6,33 @@
 <title>Teleprompter Control</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:#0a0a0a;--panel:#141414;--panel-2:#1a1a1a;
   --text:#f0f0f0;--muted:#8a8a8a;--border:#2a2a2a;--accent:#ffc800;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,sans-serif;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,'Segoe UI',sans-serif;}
 
 /* ── OPENING ── */
-#openingPanel{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px 24px;}
+#openingPanel{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px 24px;}
 #openingPanel.hidden{display:none;}
-.open-logo{font-size:18px;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
-#qrBox{background:#fff;padding:12px;border-radius:10px;display:inline-block;}
-#qrBox canvas,#qrBox img{display:block;}
-#hostCode{font-family:"SF Mono","Courier New",monospace;font-size:44px;letter-spacing:.2em;color:var(--accent);border:2px solid var(--accent);border-radius:8px;padding:12px 20px;text-align:center;}
-#connectionStatus{color:var(--muted);font-size:13px;min-height:18px;}
-#newCodeBtn{background:none;border:1px solid var(--border);color:var(--muted);padding:8px 16px;border-radius:7px;font-size:13px;cursor:pointer;}
-#newCodeBtn:hover{border-color:var(--accent);color:var(--accent);}
-.open-divider{color:var(--muted);font-size:12px;letter-spacing:.05em;margin:4px 0;}
 .open-actions{display:flex;gap:12px;}
 .open-btn{padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;border:none;}
 .open-btn.primary{background:var(--accent);color:#000;}
 .open-btn.secondary{background:var(--panel-2);color:var(--text);border:1px solid var(--border);}
+/* Combined QR + code box */
+#codeBox{border:2px solid var(--accent);border-radius:14px;padding:20px 24px;background:var(--panel);display:flex;flex-direction:column;align-items:center;gap:14px;transition:opacity .35s,visibility .35s;}
+#codeBox.faded{opacity:0;visibility:hidden;pointer-events:none;}
+#codeBox canvas,#codeBox img{border-radius:6px;display:block;}
+#hostCode{font-family:'Inter',sans-serif;font-size:40px;font-weight:700;letter-spacing:.2em;color:var(--accent);}
+/* Connection indicator */
+#connIndicator{display:flex;align-items:center;gap:10px;padding:12px 22px;border-radius:10px;border:2px solid;font-size:14px;font-weight:600;min-width:220px;justify-content:center;}
+#connIndicator.conn-waiting{border-color:var(--accent);color:var(--accent);}
+#connIndicator.conn-connected{border-color:#22c55e;color:#22c55e;}
+#connIndicator.conn-error{border-color:#e55;color:#e55;}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;}
 
 /* ── QR MODAL ── */
 #qrModal{display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.82);align-items:center;justify-content:center;}
@@ -174,27 +177,30 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 #persistentCode{font-family:"SF Mono","Courier New",monospace;font-size:18px;color:var(--accent);border:1px solid var(--border);border-radius:6px;padding:5px 12px;letter-spacing:.12em;cursor:pointer;transition:border-color .15s;}
 #persistentCode:hover{border-color:var(--accent);}
 
-/* ── TOAST ── */
-#restoreToast{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:98;background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;align-items:center;gap:10px;box-shadow:0 4px 24px rgba(0,0,0,.6);white-space:nowrap;}
-#restoreToast.visible{display:flex;}
-.toast-btn{background:var(--accent);color:#000;border:none;padding:7px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;}
-.toast-btn.sec{background:none;border:1px solid var(--border);color:var(--muted);font-weight:400;}
+/* ── INLINE RESTORE NOTICE ── */
+#restoreNotice{display:none;align-items:center;gap:6px;font-size:11px;color:var(--text);background:var(--panel-2);border:1px solid var(--accent);border-radius:6px;padding:3px 8px;white-space:nowrap;}
+#restoreNotice.visible{display:flex;}
+.rn-btn{background:var(--accent);color:#000;border:none;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;}
+.rn-dismiss{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;line-height:1;padding:0 2px;}
+#autosaveStatus{font-size:11px;color:var(--muted);}
 </style>
 </head>
 <body>
 
 <!-- ── OPENING ── -->
 <div id="openingPanel">
-  <div class="open-logo">Teleprompter</div>
-  <div id="qrBox"><div id="qrCanvas"></div></div>
-  <div id="hostCode">------</div>
-  <div id="connectionStatus">Generating code…</div>
-  <button id="newCodeBtn">New code</button>
-  <div class="open-divider">— start a session —</div>
   <div class="open-actions">
     <button class="open-btn primary" id="newProjectBtn">New project</button>
     <button class="open-btn secondary" id="loadProjectBtn">Load project</button>
     <input type="file" id="fileInput" accept=".json,.tpsession">
+  </div>
+  <div id="codeBox">
+    <div id="qrCanvas"></div>
+    <div id="hostCode">------</div>
+  </div>
+  <div id="connIndicator" class="conn-waiting">
+    <span class="conn-dot"></span>
+    <span id="connText">Generating code…</span>
   </div>
 </div>
 
@@ -212,6 +218,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <div id="tabBar">
   <button id="addTabBtn">+</button>
   <div class="tab-session-area">
+    <span id="autosaveStatus"></span>
+    <div id="restoreNotice">
+      Restore autosaved session?
+      <span id="savedTime" style="color:var(--muted)"></span>
+      <button class="rn-btn" id="restoreBtn">Restore</button>
+      <button class="rn-dismiss" id="dismissRestoreBtn">✕</button>
+    </div>
     <button class="tab-session-btn" id="saveSessionBtn">Save session</button>
     <button class="tab-session-btn" id="loadSessionBtn">Load session</button>
   </div>
@@ -239,7 +252,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
       <div class="tb-right">
         <button class="tb-btn" id="copyBtn">Copy</button>
         <button class="tb-btn" id="exportBtn">Export</button>
-        <span id="saveStatus"></span>
       </div>
     </div>
 
@@ -300,14 +312,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
   </div>
 </div>
 
-<div id="restoreToast">
-  <div>
-    <div style="font-size:13px;">Restore autosaved script?</div>
-    <div id="savedTime" style="font-size:11px;color:var(--muted);margin-top:2px;"></div>
-  </div>
-  <button class="toast-btn" id="restoreBtn">Restore</button>
-  <button class="toast-btn sec" id="dismissRestoreBtn">Discard</button>
-</div>
 
 <script>
 // ── HELPERS ──────────────────────────────────────────────
@@ -345,15 +349,15 @@ Save your full session (all scripts, notes, settings) as a .tpsession file and r
 // ── DOM REFS ──────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const openingPanel=$('openingPanel'), newProjectBtn=$('newProjectBtn'), loadProjectBtn=$('loadProjectBtn');
-const hostCode=$('hostCode'), connectionStatus=$('connectionStatus'), newCodeBtn=$('newCodeBtn'), qrCanvas=$('qrCanvas');
+const hostCode=$('hostCode'), qrCanvas=$('qrCanvas');
 const fileInput=$('fileInput');
 const qrModal=$('qrModal'), qrModalCanvas=$('qrModalCanvas'), qrModalCode=$('qrModalCode'), closeQrModal=$('closeQrModal');
 const mainPanel=$('mainPanel'), tabBar=$('tabBar');
 const reconnectBanner=$('reconnectBanner'), bannerCode=$('bannerCode'), dismissBanner=$('dismissBanner');
 const persistentCode=$('persistentCode');
-const restoreToast=$('restoreToast'), savedTimeEl=$('savedTime'), restoreBtn=$('restoreBtn'), dismissRestoreBtn=$('dismissRestoreBtn');
+const restoreNotice=$('restoreNotice'), savedTimeEl=$('savedTime'), restoreBtn=$('restoreBtn'), dismissRestoreBtn=$('dismissRestoreBtn'), autosaveStatus=$('autosaveStatus');
 const addTabBtn=$('addTabBtn'), saveSessionBtn=$('saveSessionBtn'), loadSessionBtn=$('loadSessionBtn');
-const editorModeBtn=$('editorModeBtn'), directorModeBtn=$('directorModeBtn'), saveStatus=$('saveStatus');
+const editorModeBtn=$('editorModeBtn'), directorModeBtn=$('directorModeBtn');
 const highlightLayer=$('highlightLayer'), textArea=$('textArea');
 const undoBtn=$('undoBtn'), redoBtn=$('redoBtn'), copyBtn=$('copyBtn'), exportBtn=$('exportBtn');
 const editorStack=$('editorStack'), directorView=$('directorView');
@@ -383,8 +387,9 @@ function persistSession(){
   try{localStorage.setItem(SESSION_KEY,JSON.stringify(session));}catch(e){}
 }
 function autosave(){
-  try{localStorage.setItem(AUTOSAVE_KEY,JSON.stringify({text:textArea.value,savedAt:Date.now()}));}catch(e){}
-  saveStatus.textContent='Saved';setTimeout(()=>{saveStatus.textContent='';},2000);
+  getActiveScript().text=textArea.value;
+  try{localStorage.setItem(AUTOSAVE_KEY,JSON.stringify({session:JSON.parse(JSON.stringify(session)),savedAt:Date.now()}));}catch(e){}
+  if(autosaveStatus){autosaveStatus.textContent='Saved';setTimeout(()=>{autosaveStatus.textContent='';},2000);}
 }
 let session=(()=>{try{const r=localStorage.getItem(SESSION_KEY);if(r){const s=JSON.parse(r);if(s&&s.scripts)return s;}}catch(e){}return defaultSession(true);})();
 
@@ -613,10 +618,14 @@ addTabBtn.onclick=addScript;
 // ── SESSION SAVE / LOAD ───────────────────────────────────
 saveSessionBtn.onclick=()=>{
   persistSession();
+  const def=(session.scripts.length===1?session.scripts[0].name:'session').replace(/[^a-z0-9_ -]/gi,'').trim()||'session';
+  const name=prompt('Save session as:',def);
+  if(name===null)return;
+  const filename=(name.trim()||def).replace(/\.json$/i,'')+'.json';
   const data={_type:'teleprompter-session',_version:1,...session};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='teleprompter-session.json';
+  const a=document.createElement('a');a.href=url;a.download=filename;
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
 };
 function doLoadFile(file){
@@ -639,13 +648,25 @@ loadSessionBtn.onclick=()=>fileInput.click();
 // ── AUTOSAVE / RESTORE ────────────────────────────────────
 function checkRestore(){
   try{const r=localStorage.getItem(AUTOSAVE_KEY);if(!r)return;const s=JSON.parse(r);
-    if(!s||!s.text||s.text===state.text)return;
-    const d=new Date(s.savedAt);savedTimeEl.textContent='Saved '+d.toLocaleDateString()+' '+d.toLocaleTimeString();
-    restoreToast.classList.add('visible');
+    if(!s||!s.session||!s.session.scripts)return;
+    const d=new Date(s.savedAt);
+    if(savedTimeEl)savedTimeEl.textContent='· '+d.toLocaleTimeString();
+    if(restoreNotice)restoreNotice.classList.add('visible');
   }catch(e){}
 }
-restoreBtn.onclick=()=>{try{const s=JSON.parse(localStorage.getItem(AUTOSAVE_KEY));if(s){textArea.value=s.text;sendUpdate('text',s.text);}}catch(e){}restoreToast.classList.remove('visible');};
-dismissRestoreBtn.onclick=()=>restoreToast.classList.remove('visible');
+restoreBtn.onclick=()=>{
+  try{
+    const s=JSON.parse(localStorage.getItem(AUTOSAVE_KEY));
+    if(s&&s.session){
+      session=s.session;if(!session.notes)session.notes={};
+      syncScript();textArea.value=state.text;state.text=textArea.value;
+      previewText.textContent=state.text;sentenceStarts=buildSentenceStarts(state.text);
+      renderTabs();renderControls();if(uiMode==='director')renderDirectorView();sendUpdate('text',state.text);
+    }
+  }catch(e){}
+  if(restoreNotice)restoreNotice.classList.remove('visible');
+};
+dismissRestoreBtn.onclick=()=>{if(restoreNotice)restoreNotice.classList.remove('visible');};
 
 // ── RENDERING ─────────────────────────────────────────────
 function renderControls(){
@@ -893,6 +914,7 @@ function applyCode(c){
   bannerCode.textContent=c;
   persistentCode.textContent=c;
   renderQr(c);
+  setConnStatus('conn-waiting','Waiting for prompter…');
 }
 function setPeerStatus(ready){
   const dot=document.getElementById('peerStatus');
@@ -913,20 +935,24 @@ const ICE_CONFIG = {
     { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
   ]}
 };
+function setConnStatus(cls, text){
+  const el=$('connIndicator'),codeBox=$('codeBox');
+  if(el){el.className=cls;}
+  const ct=$('connText');if(ct)ct.textContent=text;
+  if(codeBox)codeBox.classList.toggle('faded',cls==='conn-connected');
+}
 function startHost(){
   peer=new Peer('tp-'+peerCode, ICE_CONFIG);
-  connectionStatus.textContent='Waiting for prompter…';
   peer.on('open',()=>{
     applyCode(peerCode);
     setPeerStatus(true);
-    connectionStatus.textContent='Waiting for prompter…';
-  });
+    });
   peer.on('connection',c=>{
     conn=c;
     conn.on('open',()=>{
       sideStatus.textContent='CONNECTED';
       reconnectBanner.classList.remove('visible');
-      connectionStatus.textContent='Prompter connected — choose a session below';
+      setConnStatus('conn-connected','Connected');
       syncScript();
       const payload={type:'state',data:{...state,text:getActiveScript().text}};
       conn.send(payload);
@@ -937,7 +963,7 @@ function startHost(){
       conn=null;
       sideStatus.textContent='DISCONNECTED';
       reconnectBanner.classList.add('visible');
-      connectionStatus.textContent='Waiting for prompter…';
+      setConnStatus('conn-waiting','Waiting for prompter…');
     });
   });
   peer.on('error',err=>{
@@ -947,12 +973,12 @@ function startHost(){
       persistentCode.textContent=peerCode;
       peer.destroy();startHost();
     }else{
-      connectionStatus.textContent='Error: '+err.type;
+      setConnStatus('conn-error','Error: '+err.type);
       console.warn('PeerJS error:',err.type);
     }
   });
 }
-newCodeBtn.onclick=()=>{if(peer)peer.destroy();conn=null;peerCode=generateCode();connectionStatus.textContent='Generating…';setPeerStatus(false);startHost();};
+// newCodeBtn removed from UI
 startHost();
 
 // Watch for new connections when main panel is up (v4 reconnect pattern)
@@ -963,13 +989,14 @@ setInterval(()=>{
       conn.on('open',()=>{
         sideStatus.textContent='CONNECTED';
         reconnectBanner.classList.remove('visible');
+        setConnStatus('conn-connected','Connected');
         syncScript();
         const payload={type:'state',data:{...state,text:getActiveScript().text}};
         conn.send(payload);
         setTimeout(()=>{if(conn&&conn.open)conn.send(payload);},400);
       });
       conn.on('data',handleData);
-      conn.on('close',()=>{conn=null;sideStatus.textContent='DISCONNECTED';reconnectBanner.classList.add('visible');});
+      conn.on('close',()=>{conn=null;sideStatus.textContent='DISCONNECTED';reconnectBanner.classList.add('visible');setConnStatus('conn-waiting','Waiting for prompter…');});
     });
   }
 },2000);
