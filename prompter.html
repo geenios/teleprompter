@@ -562,8 +562,8 @@
 
   // ---- Connection ----
   function setStatus(text, connected) {
-    statusText.textContent = text;
-    statusDot.classList.toggle('on', !!connected);
+    if (statusText) statusText.textContent = text;
+    if (statusDot) statusDot.classList.toggle('on', !!connected);
   }
 
   codeInput.addEventListener('input', () => {
