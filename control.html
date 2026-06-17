@@ -85,6 +85,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 .tb-btn.mode.active{border-color:var(--accent);color:var(--accent);}
 .tb-sep{width:1px;background:var(--border);height:20px;margin:0 3px;flex-shrink:0;}
 
+/* ── EDITOR SCROLLBAR (left, editor-nav only, no prompter effect) ── */
+#editorScrollbar{width:12px;background:var(--panel);border-right:1px solid var(--border);position:relative;flex-shrink:0;cursor:pointer;user-select:none;}
+#editorScrollThumb{position:absolute;left:2px;right:2px;min-height:20px;background:var(--muted);border-radius:4px;opacity:.4;cursor:grab;transition:opacity .15s;}
+#editorScrollThumb:hover{opacity:.7;}
+#editorScrollThumb:active{cursor:grabbing;opacity:.9;}
+/* Hide native scrollbars — left scrollbar replaces them */
+#textArea{scrollbar-width:none;}
+#textArea::-webkit-scrollbar{display:none;}
+#directorView{scrollbar-width:none;}
+#directorView::-webkit-scrollbar{display:none;}
+
 /* ── EDITOR AREA ── */
 #editorArea{flex:1;display:flex;flex-direction:row;min-height:0;}
 #editorStack{flex:1;position:relative;min-height:0;}
@@ -228,6 +239,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
     </div>
 
     <div id="editorArea">
+      <div id="editorScrollbar"><div id="editorScrollThumb"></div></div>
       <div id="editorStack">
         <div id="highlightLayer" aria-hidden="true"></div>
         <textarea id="textArea" spellcheck="false" placeholder="Type the script here…"></textarea>
@@ -340,6 +352,7 @@ const addTabBtn=$('addTabBtn'), saveSessionBtn=$('saveSessionBtn'), loadSessionB
 const editorModeBtn=$('editorModeBtn'), directorModeBtn=$('directorModeBtn'), saveStatus=$('saveStatus');
 const highlightLayer=$('highlightLayer'), textArea=$('textArea');
 const undoBtn=$('undoBtn'), redoBtn=$('redoBtn'), copyBtn=$('copyBtn'), exportBtn=$('exportBtn');
+const editorScrollbar=$('editorScrollbar'), editorScrollThumb=$('editorScrollThumb');
 const editorStack=$('editorStack'), directorView=$('directorView');
 const scrubberTrack=$('scrubberTrack'), scrubberThumb=$('scrubberThumb');
 const dragHandle=$('dragHandle'), sidePane=$('sidePane');
@@ -386,6 +399,7 @@ function setMode(m){
   editorStack.style.display=dir?'none':'';
   directorView.classList.toggle('active',dir);
   if(dir)renderDirectorView();else renderHighlight();
+  requestAnimationFrame(updateEditorScroll);
 }
 editorModeBtn.onclick=()=>setMode('editor');
 directorModeBtn.onclick=()=>setMode('director');
@@ -508,7 +522,7 @@ function highlightDirector(){
       if(!first)first=row;
     }
   });
-  if(first){clearTimeout(dvDebounce);dvDebounce=setTimeout(()=>first.scrollIntoView({block:'nearest',behavior:'smooth'}),200);}
+  if(first){clearTimeout(dvDebounce);dvDebounce=setTimeout(()=>{first.scrollIntoView({block:'nearest',behavior:'smooth'});requestAnimationFrame(updateEditorScroll);},200);}
 }
 
 function exportWithNotes(){
@@ -684,6 +698,7 @@ function scrubPx(dpx){
   scrollPct=previewPos/max;sendUpdate('seek',scrollPct);renderHighlight();updateScrubber();
   if(uiMode==='editor'){const{startChar}=getHighlightRange();const total=state.text.length||1;textArea.scrollTop=(startChar/total)*textArea.scrollHeight;highlightLayer.scrollTop=textArea.scrollTop;}
   else highlightDirector();
+  updateEditorScroll();
 }
 let prevDragY=0;
 previewBox.addEventListener('pointerdown',e=>{draggingPreview=true;prevDragY=e.clientY;previewBox.setPointerCapture(e.pointerId);previewBox.classList.add('dragging');});
@@ -726,9 +741,53 @@ function renderHighlight(){
   highlightLayer.innerHTML=escHtml(text.slice(0,startChar))+(startChar<endChar?'<span class="highlight-span">'+escHtml(text.slice(startChar,endChar))+'</span>':'')+escHtml(text.slice(endChar));
   highlightLayer.scrollTop=textArea.scrollTop;
 }
-textArea.addEventListener('scroll',()=>{highlightLayer.scrollTop=textArea.scrollTop;});
+textArea.addEventListener('scroll',()=>{highlightLayer.scrollTop=textArea.scrollTop;updateEditorScroll();});
 textArea.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*WS);},{passive:false});
 directorView.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*WS);},{passive:false});
+
+// ── LEFT EDITOR SCROLLBAR (navigates editor without affecting prompter) ─
+function editorScrollEl(){return uiMode==='director'?directorView:textArea;}
+function updateEditorScroll(){
+  const el=editorScrollEl();
+  const h=editorScrollbar.clientHeight;
+  const viewH=el.clientHeight, contentH=el.scrollHeight;
+  if(contentH<=viewH){editorScrollThumb.style.display='none';return;}
+  editorScrollThumb.style.display='';
+  const thumbH=Math.max(20,(viewH/contentH)*h);
+  const thumbTop=(el.scrollTop/(contentH-viewH))*(h-thumbH);
+  editorScrollThumb.style.height=thumbH+'px';
+  editorScrollThumb.style.top=Math.max(0,thumbTop)+'px';
+}
+function editorScrollToRatio(ratio){
+  const el=editorScrollEl();
+  el.scrollTop=ratio*(el.scrollHeight-el.clientHeight);
+  if(uiMode==='editor')highlightLayer.scrollTop=el.scrollTop;
+  updateEditorScroll();
+}
+let draggingES=false, esDragOff=0;
+editorScrollThumb.addEventListener('pointerdown',e=>{
+  e.preventDefault();e.stopPropagation();
+  draggingES=true;
+  esDragOff=e.clientY-editorScrollbar.getBoundingClientRect().top-(parseFloat(editorScrollThumb.style.top)||0);
+  editorScrollThumb.setPointerCapture(e.pointerId);
+});
+editorScrollThumb.addEventListener('pointermove',e=>{
+  if(!draggingES)return;
+  const h=editorScrollbar.clientHeight;
+  const thumbH=parseFloat(editorScrollThumb.style.height)||20;
+  const newTop=Math.max(0,Math.min(e.clientY-editorScrollbar.getBoundingClientRect().top-esDragOff,h-thumbH));
+  editorScrollToRatio(newTop/(h-thumbH));
+});
+editorScrollThumb.addEventListener('pointerup',()=>{draggingES=false;});
+editorScrollThumb.addEventListener('pointercancel',()=>{draggingES=false;});
+editorScrollbar.addEventListener('pointerdown',e=>{
+  if(e.target===editorScrollThumb)return;
+  const h=editorScrollbar.clientHeight;
+  const thumbH=parseFloat(editorScrollThumb.style.height)||20;
+  const ratio=Math.max(0,Math.min((e.clientY-editorScrollbar.getBoundingClientRect().top-thumbH/2)/(h-thumbH),1));
+  editorScrollToRatio(ratio);
+});
+// No wheel on left scrollbar — wheel goes to textarea/directorView which scrubs prompter
 
 // ── SCRUBBER ──────────────────────────────────────────────
 function thumbGeo(){
@@ -774,6 +833,7 @@ speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value;sendUpdate('sc
 textArea.oninput=()=>{
   const v=textArea.value;setTimeout(()=>sendUpdate('text',v),250);
   getActiveScript().text=v;sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();
+  requestAnimationFrame(updateEditorScroll);
 };
 undoBtn.onclick=()=>{textArea.focus();document.execCommand('undo');};
 redoBtn.onclick=()=>{textArea.focus();document.execCommand('redo');};
@@ -798,7 +858,7 @@ function handleData(msg){
   else if(msg.type==='scroll'){scrollPct=msg.position;if(!draggingPreview)correctPreview(scrollPct);renderHighlight();updateScrubber();}
   else if(msg.type==='viewport'){phone={w:msg.width,h:msg.height};updateMonitorScale();}
 }
-window.addEventListener('resize',()=>{updateMonitorScale();updateScrubber();});
+window.addEventListener('resize',()=>{updateMonitorScale();updateScrubber();updateEditorScroll();});
 
 // ── QR MODAL ──────────────────────────────────────────────
 function buildPrompterUrl(c){const dir=window.location.pathname.replace(/\/[^/]*$/,'/');return window.location.origin+dir+'prompter.html?code='+c;}

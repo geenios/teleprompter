@@ -443,11 +443,9 @@
   });
 
   document.addEventListener('keyup', e => {
-    const key = e.key.toLowerCase();
-    const sc = shortcuts;
-    const isJump = (sc.jumpDown || []).map(k=>k&&k.toLowerCase()).includes(key) ||
-                   (sc.jumpUp   || []).map(k=>k&&k.toLowerCase()).includes(key);
-    if (isJump) stopScroll();
+    // Intentionally empty for scroll keys.
+    // The 250ms debounce in startOrExtendScroll handles stopping.
+    // Calling stopScroll() here kills the interval before it fires on rapid remotes.
   });
 
   // ---- Settings UI ----
