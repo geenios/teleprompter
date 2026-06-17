@@ -111,7 +111,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
   border-radius:5px;position:relative;
 }
 .dv-sentence-row:hover{background:var(--panel-2);}
-.dv-check{width:14px;height:14px;margin-top:4px;accent-color:var(--accent);cursor:pointer;visibility:hidden;grid-row:1;}
+.dv-check{
+  appearance:none;-webkit-appearance:none;
+  width:14px;height:14px;margin-top:4px;flex-shrink:0;
+  border:2px solid var(--accent);border-radius:2px;
+  background:transparent;cursor:pointer;visibility:hidden;grid-row:1;
+  position:relative;
+}
+.dv-check:checked{background:var(--accent);}
+.dv-check:checked::after{
+  content:'';position:absolute;left:2px;top:-1px;
+  width:5px;height:9px;
+  border:2px solid #000;border-top:none;border-left:none;
+  transform:rotate(45deg);
+}
 .section-first .dv-check{visibility:visible;}
 .dv-sent-text{font-size:14px;line-height:1.6;color:var(--text);cursor:pointer;display:block;grid-column:2;}
 .dv-hl{background:rgba(255,200,0,.75);border-radius:2px;color:inherit;}
@@ -574,9 +587,13 @@ function doRename(tab,nameSpan,scr){
   inp.onkeydown=e=>{if(e.key==='Enter')inp.blur();if(e.key==='Escape'){done=true;inp.remove();nameSpan.style.display='';}};
 }
 function switchTo(id){
-  getActiveScript().text=textArea.value;session.activeId=id;persistSession();syncScript();
-  textArea.value=state.text;sentenceStarts=buildSentenceStarts(state.text);sentenceIdx=0;
+  getActiveScript().text=textArea.value;  // save current text before switching
+  session.activeId=id;
+  syncScript();  // load new script into state.text
+  textArea.value=state.text;state.text=textArea.value;previewText.textContent=state.text;
+  sentenceStarts=buildSentenceStarts(state.text);sentenceIdx=0;
   renderTabs();renderControls();sendUpdate('text',state.text);
+  try{localStorage.setItem(SESSION_KEY,JSON.stringify(session));}catch(e){}  // save directly, not via persistSession
 }
 function addScript(){
   getActiveScript().text=textArea.value;const id=uid();
