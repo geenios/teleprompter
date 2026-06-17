@@ -306,152 +306,120 @@
   let conn = null;
   let peer = null;
 
-  // ---- Keyboard shortcuts (stored per-device in localStorage) ----
-  const SHORTCUT_ACTIONS = [
-    { id: 'playPause',  label: 'Play / Pause',      slots: 2, defaults: ['1', 'g'] },
-    { id: 'speedUp',    label: 'Speed up',           slots: 1, defaults: ['f'] },
-    { id: 'speedDown',  label: 'Speed down',         slots: 1, defaults: ['v'] },
-    { id: 'jumpDown',   label: 'Jump forward',       slots: 1, defaults: ['ArrowDown'] },
-    { id: 'jumpUp',     label: 'Jump back',          slots: 1, defaults: ['ArrowUp'] },
-    { id: 'jumpToTop',  label: 'Jump to top',        slots: 1, defaults: ['t'] }
+  // ---- Remote key reference (shown in settings panel) ----
+  const KEY_REFERENCE = [
+    ['H',             'Play / Pause'],
+    ['W  hold / E release', 'Scroll up'],
+    ['X  hold / Y release', 'Scroll down'],
+    ['U  hold / F release', 'Speed up'],
+    ['L  hold / V release', 'Speed down'],
+    ['O',             'Font size −'],
+    ['J',             'Font size +'],
+    ['Z  hold / T release', 'Previous paragraph'],
+    ['K  hold / P release', 'Next paragraph'],
   ];
-  const SC_STORE_KEY = 'tp_shortcuts';
-  let shortcuts = loadShortcuts();
-
-  function loadShortcuts() {
-    try {
-      const raw = localStorage.getItem(SC_STORE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch(e) {}
-    const def = {};
-    SHORTCUT_ACTIONS.forEach(a => { def[a.id] = [...a.defaults]; });
-    return def;
-  }
-  function saveShortcuts() {
-    try { localStorage.setItem(SC_STORE_KEY, JSON.stringify(shortcuts)); } catch(e) {}
-  }
-  function keyLabel(k) {
-    if (!k) return '';
-    const map = { ArrowDown: '↓', ArrowUp: '↑', ArrowLeft: '←', ArrowRight: '→',
-      ' ': 'Space', Escape: 'Esc', Enter: '↵' };
-    return map[k] || k.toUpperCase();
-  }
-
-  // ---- Render shortcuts settings UI ----
-  let listeningEl = null;
-  let listeningAction = null;
-  let listeningSlot = null;
 
   function renderShortcutTable() {
     shortcutTable.innerHTML = '';
-    SHORTCUT_ACTIONS.forEach(action => {
-      const labelEl = document.createElement('div');
-      labelEl.className = 'sc-label';
-      labelEl.textContent = action.label;
-      shortcutTable.appendChild(labelEl);
-
-      for (let s = 0; s < action.slots; s++) {
-        const key = (shortcuts[action.id] || [])[s] || null;
-        const badge = document.createElement('div');
-        badge.className = 'sc-key' + (key ? '' : ' empty');
-        badge.textContent = keyLabel(key) || '—';
-        badge.dataset.action = action.id;
-        badge.dataset.slot = s;
-        badge.onclick = () => startListening(badge, action.id, s);
-        shortcutTable.appendChild(badge);
-      }
-      // pad empty columns if slots < 2
-      if (action.slots < 2) {
-        const spacer = document.createElement('div');
-        shortcutTable.appendChild(spacer);
-      }
+    KEY_REFERENCE.forEach(([keys, label]) => {
+      const k = document.createElement('div');
+      k.className = 'sc-key'; k.textContent = keys; k.style.fontSize='11px';
+      const l = document.createElement('div');
+      l.className = 'sc-label'; l.textContent = label;
+      shortcutTable.appendChild(k); shortcutTable.appendChild(l);
+      shortcutTable.appendChild(document.createElement('div')); // spacer
     });
   }
 
-  function startListening(el, actionId, slot) {
-    if (listeningEl) listeningEl.classList.remove('listening');
-    listeningEl = el;
-    listeningAction = actionId;
-    listeningSlot = slot;
-    el.classList.add('listening');
-    el.textContent = '…';
-  }
-
-
-  // ---- Smooth hold-to-scroll ----
-  // startScroll on keydown, scheduleStop on keyup.
-  // scheduleStop uses a 300ms grace period so rapid keydown+keyup pairs
-  // don't prematurely stop the interval between presses.
+  // ---- Scroll ----
   let scrollInterval = null;
-  let scrollStopTimeout = null;
   const HOLD_SCROLL_SPEED = 80;
   const HOLD_SCROLL_INTERVAL = 50;
 
-  function startScroll(direction) {
-    clearTimeout(scrollStopTimeout); // Cancel any pending stop
-    scrollStopTimeout = null;
-    if (!scrollInterval) {
-      scrollInterval = setInterval(() => {
-        setScroll(scrollPosition + direction * HOLD_SCROLL_SPEED);
-        broadcastScroll();
-      }, HOLD_SCROLL_INTERVAL);
-    }
-  }
-  function scheduleStop() {
-    clearTimeout(scrollStopTimeout);
-    scrollStopTimeout = setTimeout(stopScroll, 300);
+  function startScroll(dir) {
+    clearInterval(scrollInterval);
+    scrollInterval = setInterval(() => {
+      setScroll(scrollPosition + dir * HOLD_SCROLL_SPEED);
+      broadcastScroll();
+    }, HOLD_SCROLL_INTERVAL);
   }
   function stopScroll() {
     clearInterval(scrollInterval); scrollInterval = null;
-    clearTimeout(scrollStopTimeout); scrollStopTimeout = null;
   }
 
-  function performAction(actionId) {
-    switch (actionId) {
-      case 'playPause':
-        updateState({ playState: state.playState === 'playing' ? 'paused' : 'playing' }); break;
-      case 'speedUp':
-        updateState({ scrollSpeed: Math.min(400, state.scrollSpeed + 10) }); break;
-      case 'speedDown':
-        updateState({ scrollSpeed: Math.max(0, state.scrollSpeed - 10) }); break;
-      case 'jumpToTop':
-        setScroll(0); broadcastScroll(); break;
-      // jumpDown / jumpUp handled via hold-to-scroll in key events
-    }
+  // ---- Speed change ----
+  let speedInterval = null;
+
+  function startSpeedChange(delta) {
+    clearInterval(speedInterval);
+    speedInterval = setInterval(() => {
+      const v = Math.max(0, Math.min(400, state.scrollSpeed + delta));
+      if (v !== state.scrollSpeed) { updateState({ scrollSpeed: v }); }
+    }, 50);
+  }
+  function stopSpeedChange() {
+    clearInterval(speedInterval); speedInterval = null;
+  }
+
+  // ---- Paragraph jump ----
+  let paraInterval = null;
+
+  function getParagraphOffsets() {
+    const offsets = [0], re = /\n{2,}/g; let m;
+    while ((m = re.exec(state.text)) !== null) offsets.push(m.index + m[0].length);
+    return offsets;
+  }
+  function startParaJump(dir) {
+    if (paraInterval) return; // already jumping, wait for release
+    const jump = () => {
+      const offsets = getParagraphOffsets();
+      const max = Math.max(1, scrollArea.scrollHeight - scrollArea.clientHeight);
+      const charPos = (scrollPosition / max) * (state.text.length || 1);
+      let curr = 0;
+      for (let i = offsets.length - 1; i >= 0; i--) {
+        if (offsets[i] <= charPos) { curr = i; break; }
+      }
+      const next = Math.max(0, Math.min(offsets.length - 1, curr + dir));
+      setScroll((offsets[next] / (state.text.length || 1)) * max);
+      broadcastScroll();
+    };
+    jump();
+    paraInterval = setInterval(jump, 600);
+  }
+  function stopParaJump() {
+    clearInterval(paraInterval); paraInterval = null;
   }
 
   // ---- Key events ----
   document.addEventListener('keydown', e => {
-    if (listeningEl) {
-      e.preventDefault();
-      if (e.key === 'Escape') { listeningEl.classList.remove('listening'); listeningEl = null; return; }
-      if (!shortcuts[listeningAction]) shortcuts[listeningAction] = [];
-      shortcuts[listeningAction][listeningSlot] = e.key;
-      saveShortcuts();
-      listeningEl.classList.remove('listening');
-      listeningEl = null;
-      renderShortcutTable();
+    // Settings overlay: close on Escape
+    if (!settingsOverlay.classList.contains('hidden')) {
+      if (e.key === 'Escape') settingsOverlay.classList.add('hidden');
       return;
     }
-    if (!settingsOverlay.classList.contains('hidden')) return;
     if (!connectOverlay.classList.contains('hidden')) return;
 
-    const key = e.key.toLowerCase();
-    for (const action of SHORTCUT_ACTIONS) {
-      const keys = (shortcuts[action.id] || []).map(k => k ? k.toLowerCase() : '');
-      if (!keys.includes(key)) continue;
-      if (action.id === 'jumpDown') { e.preventDefault(); startScroll(1); return; }
-      if (action.id === 'jumpUp')   { e.preventDefault(); startScroll(-1); return; }
-      performAction(action.id);
-      return;
+    const k = e.key.toLowerCase();
+    switch (k) {
+      case 'w': e.preventDefault(); startScroll(-1);          break;
+      case 'e': e.preventDefault(); stopScroll();              break;
+      case 'x': e.preventDefault(); startScroll(1);           break;
+      case 'y': e.preventDefault(); stopScroll();              break;
+      case 'u': e.preventDefault(); startSpeedChange(3);      break;
+      case 'f': e.preventDefault(); stopSpeedChange();         break;
+      case 'l': e.preventDefault(); startSpeedChange(-3);     break;
+      case 'v': e.preventDefault(); stopSpeedChange();         break;
+      case 'z': e.preventDefault(); startParaJump(-1);        break;
+      case 't': e.preventDefault(); stopParaJump();            break;
+      case 'k': e.preventDefault(); startParaJump(1);         break;
+      case 'p': e.preventDefault(); stopParaJump();            break;
+      case 'h': e.preventDefault();
+        updateState({ playState: state.playState === 'playing' ? 'paused' : 'playing' }); break;
+      case 'o': e.preventDefault();
+        updateState({ fontSize: Math.max(20, state.fontSize - 4) });                      break;
+      case 'j': e.preventDefault();
+        updateState({ fontSize: Math.min(200, state.fontSize + 4) });                     break;
     }
-  });
-
-  document.addEventListener('keyup', e => {
-    const key = e.key.toLowerCase();
-    const isJump = (shortcuts.jumpDown||[]).map(k=>k&&k.toLowerCase()).includes(key) ||
-                   (shortcuts.jumpUp  ||[]).map(k=>k&&k.toLowerCase()).includes(key);
-    if (isJump) scheduleStop();
   });
 
   // ---- Settings UI ----

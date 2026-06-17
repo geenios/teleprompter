@@ -587,13 +587,15 @@ function doRename(tab,nameSpan,scr){
   inp.onkeydown=e=>{if(e.key==='Enter')inp.blur();if(e.key==='Escape'){done=true;inp.remove();nameSpan.style.display='';}};
 }
 function switchTo(id){
-  getActiveScript().text=textArea.value;  // save current text before switching
+  getActiveScript().text=textArea.value;
   session.activeId=id;
-  syncScript();  // load new script into state.text
+  syncScript();
   textArea.value=state.text;state.text=textArea.value;previewText.textContent=state.text;
   sentenceStarts=buildSentenceStarts(state.text);sentenceIdx=0;
-  renderTabs();renderControls();sendUpdate('text',state.text);
-  try{localStorage.setItem(SESSION_KEY,JSON.stringify(session));}catch(e){}  // save directly, not via persistSession
+  renderTabs();renderControls();
+  if(uiMode==='director')renderDirectorView();
+  sendUpdate('text',state.text);
+  try{localStorage.setItem(SESSION_KEY,JSON.stringify(session));}catch(e){}
 }
 function addScript(){
   getActiveScript().text=textArea.value;const id=uid();
