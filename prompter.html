@@ -506,7 +506,18 @@
   let lastTime = null;
   function tick(ts) {
     if (state.playState === 'playing') {
-      if (lastTime !== null) setScroll(scrollPosition + state.scrollSpeed * (ts - lastTime) / 1000);
+      if (lastTime !== null) {
+        const max = scrollArea.scrollHeight - scrollArea.clientHeight;
+        const next = scrollPosition + state.scrollSpeed * (ts - lastTime) / 1000;
+        if (max > 0 && next >= max) {
+          setScroll(max);
+          lastTime = null;
+          updateState({ playState: 'paused' }); // broadcasts to control
+          requestAnimationFrame(tick);
+          return;
+        }
+        setScroll(next);
+      }
       lastTime = ts;
     } else { lastTime = null; }
     requestAnimationFrame(tick);
