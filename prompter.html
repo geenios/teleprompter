@@ -555,6 +555,7 @@
 
   // ---- Remote messages ----
   function handleRemote(msg) {
+    if (msg.type === 'state') { updateState(msg.data); return; }
     if (msg.type !== 'update') return;
     if (msg.field === 'reset') { setScroll(0); broadcastScroll(); return; }
     if (msg.field === 'seek') {

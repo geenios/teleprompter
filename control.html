@@ -812,11 +812,16 @@ function enterMainPanel(){
   openingPanel.classList.add('hidden');
   document.body.insertBefore(tabBar,mainPanel);
   tabBar.classList.add('visible');mainPanel.classList.add('visible');
-  // Show the code immediately — don't wait for PeerJS handshake
-  persistentCode.textContent = peerCode;
+  persistentCode.textContent=peerCode;
   renderTabs();syncScript();textArea.value=state.text;
   sentenceStarts=buildSentenceStarts(state.text);
   updateMonitorScale();updateScrubber();checkRestore();
+  // Send current script to prompter now that the session is chosen
+  if(conn&&conn.open){
+    const payload={type:'state',data:{...state,text:getActiveScript().text}};
+    conn.send(payload);
+    setTimeout(()=>{if(conn&&conn.open)conn.send(payload);},400);
+  }
 }
 function renderQr(c){
   qrCanvas.innerHTML='';
@@ -851,7 +856,7 @@ function startHost(){
     conn.on('open',()=>{
       sideStatus.textContent='CONNECTED';
       reconnectBanner.classList.remove('visible');
-      if(!openingPanel.classList.contains('hidden'))enterMainPanel();
+      connectionStatus.textContent='Prompter connected — choose a session below';
       syncScript();
       const payload={type:'state',data:{...state,text:getActiveScript().text}};
       conn.send(payload);
@@ -862,6 +867,7 @@ function startHost(){
       conn=null;
       sideStatus.textContent='DISCONNECTED';
       reconnectBanner.classList.add('visible');
+      connectionStatus.textContent='Waiting for prompter…';
     });
   });
   peer.on('error',err=>{
