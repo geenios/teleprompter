@@ -89,7 +89,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 #editorArea{flex:1;display:flex;flex-direction:row;min-height:0;}
 #editorStack{flex:1;position:relative;min-height:0;}
 #highlightLayer,#textArea{position:absolute;inset:0;padding:16px;font-size:16px;line-height:1.6;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;white-space:pre-wrap;word-wrap:break-word;overflow-y:auto;box-sizing:border-box;}
-#highlightLayer{color:transparent;background:var(--panel);border:1px solid transparent;pointer-events:none;z-index:1;}
+#highlightLayer{color:transparent;background:var(--panel);border:1px solid transparent;pointer-events:none;z-index:1;scrollbar-width:none;}
+#highlightLayer::-webkit-scrollbar{display:none;}
 #textArea{background:transparent;color:var(--text);border:1px solid transparent;resize:none;outline:none;z-index:2;caret-color:var(--accent);scrollbar-width:none;}
 #textArea::-webkit-scrollbar{display:none;}
 #textArea:focus{border-color:var(--accent);}
@@ -419,7 +420,7 @@ function jumpToSentence(idx){
   idx=Math.max(0,Math.min(idx,sentenceStarts.length-1));
   sentenceIdx=idx;
   const total=state.text.length||1;
-  const pct=sentenceStarts[idx]/total; // Direct linear — no DOM measurement
+  const pct=scrollPctFromChar(sentenceStarts[idx]);
   scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
   textArea.scrollTop=(sentenceStarts[idx]/total)*textArea.scrollHeight;
   highlightLayer.scrollTop=textArea.scrollTop;
@@ -456,7 +457,7 @@ function renderDirectorView(){
       const textEl=document.createElement('span');
       textEl.className='dv-sent-text';textEl.textContent=sent.text;
       textEl.onclick=()=>{
-        const pct=sent.offset/(state.text.length||1); // Direct linear
+        const pct=scrollPctFromChar(sent.offset);
         scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
       };
       row.appendChild(textEl);
@@ -510,7 +511,14 @@ function highlightDirector(){
       if(!first)first=row;
     }
   });
-  if(first){clearTimeout(dvDebounce);dvDebounce=setTimeout(()=>{first.scrollIntoView({block:'center',behavior:'smooth'});},200);}
+  if(first){
+    cancelAnimationFrame(dvDebounce);
+    dvDebounce=requestAnimationFrame(()=>{
+      // Direct scrollTop manipulation — more reliable than scrollIntoView
+      const rowTop=first.getBoundingClientRect().top-directorView.getBoundingClientRect().top+directorView.scrollTop;
+      directorView.scrollTop=Math.max(0,rowTop-directorView.clientHeight/2+first.offsetHeight/2);
+    });
+  }
 }
 
 function exportWithNotes(){
