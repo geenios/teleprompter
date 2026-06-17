@@ -416,9 +416,9 @@ function jumpToSentence(idx){
   if(!sentenceStarts.length)return;
   idx=Math.max(0,Math.min(idx,sentenceStarts.length-1));
   sentenceIdx=idx;
-  const pct=scrollPctFromChar(sentenceStarts[idx]);
-  scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
   const total=state.text.length||1;
+  const pct=sentenceStarts[idx]/total; // Direct linear — no DOM measurement
+  scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
   textArea.scrollTop=(sentenceStarts[idx]/total)*textArea.scrollHeight;
   highlightLayer.scrollTop=textArea.scrollTop;
 }
@@ -454,7 +454,7 @@ function renderDirectorView(){
       const textEl=document.createElement('span');
       textEl.className='dv-sent-text';textEl.textContent=sent.text;
       textEl.onclick=()=>{
-        const pct=scrollPctFromChar(sent.offset);
+        const pct=sent.offset/(state.text.length||1); // Direct linear
         scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
       };
       row.appendChild(textEl);
@@ -749,18 +749,26 @@ directorView.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*WS
 
 // ── SCRUBBER ──────────────────────────────────────────────
 function thumbGeo(){
-  const h=scrubberTrack.clientHeight,total=state.text.length||1;
-  const{startChar,endChar}=getHighlightRange();
-  let top=(startChar/total)*h,size=Math.max(24,((endChar-startChar)/total)*h);
-  if(top+size>h)top=h-size;if(top<0)top=0;return{h,size,top};
+  const h=scrubberTrack.clientHeight;
+  // Size = visible fraction of content in the preview
+  const totalH=Math.max(1,previewText.scrollHeight);
+  const visF=Math.min(1,previewBox.clientHeight/totalH);
+  const size=Math.max(24,visF*h);
+  // Position = direct linear mapping of scrollPct
+  const top=scrollPct*Math.max(0,h-size);
+  return{h,size,top};
 }
-function updateScrubber(){const{size,top}=thumbGeo();scrubberThumb.style.height=size+'px';scrubberThumb.style.top=top+'px';}
+function updateScrubber(){const{size,top}=thumbGeo();scrubberThumb.style.height=size+'px';scrubberThumb.style.top=Math.max(0,top)+'px';}
 function seekThumb(tt){
-  const{h,size}=thumbGeo();tt=Math.max(0,Math.min(tt,h-size));
-  const cf=h>0?tt/h:0;const pct=scrollPctFromChar(Math.round(cf*(state.text.length||1)));
+  const{h,size}=thumbGeo();
+  tt=Math.max(0,Math.min(tt,h-size));
+  // Direct linear: thumb position → scroll percentage. No DOM measurement.
+  const pct=h>size?tt/(h-size):0;
   scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
-  if(uiMode==='editor'){textArea.scrollTop=cf*textArea.scrollHeight;highlightLayer.scrollTop=textArea.scrollTop;}
-  else highlightDirector();
+  if(uiMode==='editor'){
+    const targetTop=pct*textArea.scrollHeight;
+    textArea.scrollTop=targetTop;highlightLayer.scrollTop=targetTop;
+  } else highlightDirector();
 }
 scrubberThumb.addEventListener('pointerdown',e=>{e.preventDefault();draggingScrubber=true;const{top}=thumbGeo();dragScrubOff=e.clientY-scrubberTrack.getBoundingClientRect().top-top;scrubberThumb.setPointerCapture(e.pointerId);});
 scrubberThumb.addEventListener('pointermove',e=>{if(!draggingScrubber)return;seekThumb(e.clientY-scrubberTrack.getBoundingClientRect().top-dragScrubOff);});
