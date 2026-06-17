@@ -379,26 +379,31 @@
 
 
   // ---- Smooth hold-to-scroll ----
-  // Uses a debounced timeout: each keydown extends a 250ms window.
-  // Works for both remotes that hold keydown AND remotes that fire rapid keydown+keyup pairs.
+  // startScroll on keydown, scheduleStop on keyup.
+  // scheduleStop uses a 300ms grace period so rapid keydown+keyup pairs
+  // don't prematurely stop the interval between presses.
   let scrollInterval = null;
   let scrollStopTimeout = null;
   const HOLD_SCROLL_SPEED = 80;
   const HOLD_SCROLL_INTERVAL = 50;
 
-  function startOrExtendScroll(direction) {
+  function startScroll(direction) {
+    clearTimeout(scrollStopTimeout); // Cancel any pending stop
+    scrollStopTimeout = null;
     if (!scrollInterval) {
       scrollInterval = setInterval(() => {
         setScroll(scrollPosition + direction * HOLD_SCROLL_SPEED);
         broadcastScroll();
       }, HOLD_SCROLL_INTERVAL);
     }
+  }
+  function scheduleStop() {
     clearTimeout(scrollStopTimeout);
-    scrollStopTimeout = setTimeout(stopScroll, 250);
+    scrollStopTimeout = setTimeout(stopScroll, 300);
   }
   function stopScroll() {
-    if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
-    if (scrollStopTimeout) { clearTimeout(scrollStopTimeout); scrollStopTimeout = null; }
+    clearInterval(scrollInterval); scrollInterval = null;
+    clearTimeout(scrollStopTimeout); scrollStopTimeout = null;
   }
 
   function performAction(actionId) {
@@ -435,17 +440,18 @@
     for (const action of SHORTCUT_ACTIONS) {
       const keys = (shortcuts[action.id] || []).map(k => k ? k.toLowerCase() : '');
       if (!keys.includes(key)) continue;
-      if (action.id === 'jumpDown') { e.preventDefault(); startOrExtendScroll(1); return; }
-      if (action.id === 'jumpUp')   { e.preventDefault(); startOrExtendScroll(-1); return; }
+      if (action.id === 'jumpDown') { e.preventDefault(); startScroll(1); return; }
+      if (action.id === 'jumpUp')   { e.preventDefault(); startScroll(-1); return; }
       performAction(action.id);
       return;
     }
   });
 
   document.addEventListener('keyup', e => {
-    // Intentionally empty for scroll keys.
-    // The 250ms debounce in startOrExtendScroll handles stopping.
-    // Calling stopScroll() here kills the interval before it fires on rapid remotes.
+    const key = e.key.toLowerCase();
+    const isJump = (shortcuts.jumpDown||[]).map(k=>k&&k.toLowerCase()).includes(key) ||
+                   (shortcuts.jumpUp  ||[]).map(k=>k&&k.toLowerCase()).includes(key);
+    if (isJump) scheduleStop();
   });
 
   // ---- Settings UI ----
