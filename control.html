@@ -111,7 +111,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 .dv-check{width:14px;height:14px;margin-top:4px;accent-color:var(--accent);cursor:pointer;visibility:hidden;grid-row:1;}
 .section-first .dv-check{visibility:visible;}
 .dv-sent-text{font-size:14px;line-height:1.6;color:var(--text);cursor:pointer;display:block;grid-column:2;}
-.dv-hl{background:rgba(255,200,0,.75);border-radius:2px;}
+.dv-hl{background:rgba(255,200,0,.75);border-radius:2px;color:inherit;}
 .dv-section.done .dv-sent-text{color:var(--muted);text-decoration:line-through;}
 /* Add note: absolutely positioned so it never shifts layout */
 .dv-add-note{
@@ -727,6 +727,7 @@ function renderHighlight(){
 }
 textArea.addEventListener('scroll',()=>{highlightLayer.scrollTop=textArea.scrollTop;});
 textArea.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*WS);},{passive:false});
+directorView.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*WS);},{passive:false});
 
 // ── SCRUBBER ──────────────────────────────────────────────
 function thumbGeo(){
@@ -752,7 +753,13 @@ scrubberTrack.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*W
 
 // ── OUTGOING ──────────────────────────────────────────────
 function sendUpdate(f,v){if(conn&&conn.open)conn.send({type:'update',field:f,value:v});}
-playBtn.onclick=()=>sendUpdate('playState',state.playState==='playing'?'paused':'playing');
+playBtn.onclick=()=>{
+  const v=state.playState==='playing'?'paused':'playing';
+  state.playState=v;
+  playBtn.textContent=v==='playing'?'Pause':'Play';
+  playBtn.classList.toggle('active',v==='playing');
+  sendUpdate('playState',v);
+};
 resetBtn.onclick=()=>{sendUpdate('reset',true);scrollPct=0;previewPos=0;previewBox.scrollTop=0;sentenceIdx=0;renderHighlight();updateScrubber();};
 mirrorHBtn.onclick=()=>sendUpdate('mirroredH',!state.mirroredH);
 mirrorVBtn.onclick=()=>sendUpdate('mirroredV',!state.mirroredV);
@@ -845,7 +852,10 @@ function startHost(){
       sideStatus.textContent='CONNECTED';
       reconnectBanner.classList.remove('visible');
       if(!openingPanel.classList.contains('hidden'))enterMainPanel();
-      if(conn.open)conn.send({type:'state',data:{...state,text:getActiveScript().text}});
+      syncScript();
+      const payload={type:'state',data:{...state,text:getActiveScript().text}};
+      conn.send(payload);
+      setTimeout(()=>{if(conn&&conn.open)conn.send(payload);},400);
     });
     conn.on('data',handleData);
     conn.on('close',()=>{
@@ -877,7 +887,10 @@ setInterval(()=>{
       conn.on('open',()=>{
         sideStatus.textContent='CONNECTED';
         reconnectBanner.classList.remove('visible');
-        if(conn.open)conn.send({type:'state',data:{...state,text:getActiveScript().text}});
+        syncScript();
+        const payload={type:'state',data:{...state,text:getActiveScript().text}};
+        conn.send(payload);
+        setTimeout(()=>{if(conn&&conn.open)conn.send(payload);},400);
       });
       conn.on('data',handleData);
       conn.on('close',()=>{conn=null;sideStatus.textContent='DISCONNECTED';reconnectBanner.classList.add('visible');});
