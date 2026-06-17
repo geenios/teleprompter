@@ -572,11 +572,32 @@
     connectBtn.disabled = true;
     setStatus('CONNECTING', false);
 
-    if (!peer) peer = new Peer();
+    const ICE_CONFIG = { config: { iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      { urls: 'turn:openrelay.metered.ca:80',                username:'openrelayproject', credential:'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443',               username:'openrelayproject', credential:'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
+    ]}};
+    if (!peer) peer = new Peer(ICE_CONFIG);
 
     const tryConnect = () => {
       conn = peer.connect('tp-' + code, { reliable: true });
+
+      // PeerJS doesn't always emit an error when ICE negotiation hangs —
+      // it just stays "connecting" forever. This timeout surfaces that.
+      const timeout = setTimeout(() => {
+        if (!conn || !conn.open) {
+          connectBtn.disabled = false;
+          connectStatus.textContent = 'Timed out. If the control page is open, the two networks may not be able to reach each other directly. Try connecting both devices to the same WiFi.';
+          setStatus('OFFLINE', false);
+          connectOverlay.classList.remove('hidden');
+        }
+      }, 15000);
+
       conn.on('open', () => {
+        clearTimeout(timeout);
         connectBtn.disabled = false;
         setStatus('CONNECTED', true);
         connectOverlay.classList.add('hidden');
@@ -585,12 +606,14 @@
       });
       conn.on('data', handleRemote);
       conn.on('close', () => {
+        clearTimeout(timeout);
         conn = null;
         setStatus('OFFLINE', false);
       });
-      conn.on('error', () => {
+      conn.on('error', err => {
+        clearTimeout(timeout);
         connectBtn.disabled = false;
-        connectStatus.textContent = 'Connection error. Check the code and try again.';
+        connectStatus.textContent = 'Connection error (' + (err.type || 'unknown') + '). Check the code and try again.';
         setStatus('OFFLINE', false);
         connectOverlay.classList.remove('hidden');
       });

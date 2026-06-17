@@ -903,8 +903,18 @@ newProjectBtn.onclick=()=>{session=defaultSession(true);enterMainPanel();};
 loadProjectBtn.onclick=()=>fileInput.click();
 
 // ── PEER — exact v4 structure ─────────────────────────────
+const ICE_CONFIG = {
+  config: { iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
+    { urls: 'turn:openrelay.metered.ca:80',                username:'openrelayproject', credential:'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443',               username:'openrelayproject', credential:'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
+  ]}
+};
 function startHost(){
-  peer=new Peer('tp-'+peerCode);
+  peer=new Peer('tp-'+peerCode, ICE_CONFIG);
   connectionStatus.textContent='Waiting for prompter…';
   peer.on('open',()=>{
     applyCode(peerCode);
