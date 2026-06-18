@@ -154,10 +154,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 }
 .dv-sentence-row:hover .dv-marker-btn{display:block;}
 .dv-marker-btn.active{display:block;color:var(--accent);}
-.dv-sentence-row.has-marker{border-left:2px solid var(--accent);margin-left:-2px;}
+.dv-sentence-row.has-marker::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;
+  height:2px;background:var(--accent);pointer-events:none;
+}
 /* Widen row right padding to fit both abs buttons */
 /* (overrides the 60px set on .dv-sentence-row) */
 .dv-sentence-row{padding-right:110px;}
+/* Section-pause mode: dividers become yellow */
+.section-pause-on .dv-section{border-bottom-color:var(--accent);}
+.section-pause-on .dv-section:last-child{border-bottom:none;}
+/* Director toolbar */
+#directorTools{display:none;align-items:center;gap:4px;}
+.tb-btn.dv-active{background:rgba(255,200,0,.12);color:var(--accent);border-color:var(--accent);}
+.tb-btn:disabled{opacity:.35;cursor:default;}
 /* Read time */
 #readTimeEl{font-size:11px;color:var(--muted);margin-left:auto;}
 
@@ -287,6 +297,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       <button class="tb-btn icon" id="redoBtn" title="Redo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M21 13C18.5 7.5 12 5 7 8.5S1 18.5 5 22.5"/></svg>
       </button>
+      <div id="directorTools">
+        <div class="tb-sep"></div>
+        <button class="tb-btn" id="sectionPauseBtn" title="Auto-pause at end of each section">⏸ Sections</button>
+        <button class="tb-btn" id="loopBtn" title="Loop section (replay from section start after pause)" disabled>↺ Loop</button>
+      </div>
       <div class="tb-right">
         <button class="tb-btn" id="copyBtn">Copy</button>
         <button class="tb-btn" id="exportBtn">Export</button>
@@ -445,6 +460,7 @@ syncScript();
 let uiMode='editor';
 function setMode(m){
   uiMode=m;const dir=m==='director';
+  if(directorToolsEl)directorToolsEl.style.display=dir?'flex':'none';
   editorModeBtn.classList.toggle('active',!dir);
   directorModeBtn.classList.toggle('active',dir);
   editorStack.style.display=dir?'none':'';
@@ -522,20 +538,21 @@ function renderDirectorView(){
         scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
       };
       row.appendChild(textEl);
-      // Marker auto-pause button
+      // Marker auto-pause button (keyed on END of sentence, fires after sentence plays)
       const mkrs=getActiveScript().markers||[];
-      const hasMk=mkrs.includes(sent.offset);
+      const sentEnd=sent.offset+sent.len;
+      const hasMk=mkrs.includes(sentEnd);
       if(hasMk)row.classList.add('has-marker');
       const mBtn=document.createElement('button');
       mBtn.className='dv-marker-btn'+(hasMk?' active':'');
-      mBtn.title=hasMk?'Remove auto-pause':'Add auto-pause here';
+      mBtn.title=hasMk?'Remove auto-pause':'Pause after this sentence';
       mBtn.textContent='⏸';
       mBtn.onclick=e=>{
         e.stopPropagation();
         const scr=getActiveScript();
         if(!scr.markers)scr.markers=[];
-        const mi=scr.markers.indexOf(sent.offset);
-        if(mi===-1)scr.markers.push(sent.offset);
+        const mi=scr.markers.indexOf(sentEnd);
+        if(mi===-1)scr.markers.push(sentEnd);
         else scr.markers.splice(mi,1);
         persistSession();updateMarkerPcts();renderDirectorView();
       };
@@ -903,13 +920,36 @@ scrubberTrack.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*W
 // ── OUTGOING ──────────────────────────────────────────────
 function sendUpdate(f,v){if(conn&&conn.open)conn.send({type:'update',field:f,value:v});}
 playBtn.onclick=()=>{
+  if(state.playState==='paused'&&loopMode&&pendingLoopSeek!==null){
+    sendUpdate('seek',pendingLoopSeek);
+    scrollPct=pendingLoopSeek;correctPreview(pendingLoopSeek);
+    renderHighlight();updateScrubber();
+    pendingLoopSeek=null;
+  }
   const v=state.playState==='playing'?'paused':'playing';
   state.playState=v;
   playBtn.textContent=v==='playing'?'Pause':'Play';
   playBtn.classList.toggle('active',v==='playing');
   sendUpdate('playState',v);
+  if(v==='paused')pendingLoopSeek=null; // manual pause clears pending loop
 };
 resetBtn.onclick=()=>{sendUpdate('reset',true);scrollPct=0;previewPos=0;previewBox.scrollTop=0;sentenceIdx=0;renderHighlight();updateScrubber();};
+// Director toolbar
+const sectionPauseBtn=$('sectionPauseBtn'),loopBtn=$('loopBtn'),directorToolsEl=$('directorTools');
+sectionPauseBtn.onclick=()=>{
+  sectionPauseMode=!sectionPauseMode;
+  sectionPauseBtn.classList.toggle('dv-active',sectionPauseMode);
+  loopBtn.disabled=!sectionPauseMode;
+  if(!sectionPauseMode){loopMode=false;loopBtn.classList.remove('dv-active');pendingLoopSeek=null;}
+  directorView.classList.toggle('section-pause-on',sectionPauseMode);
+  updateSectionEndPcts();
+};
+loopBtn.onclick=()=>{
+  if(!sectionPauseMode)return;
+  loopMode=!loopMode;
+  loopBtn.classList.toggle('dv-active',loopMode);
+  if(!loopMode)pendingLoopSeek=null;
+};
 mirrorHBtn.onclick=()=>sendUpdate('mirroredH',!state.mirroredH);
 mirrorVBtn.onclick=()=>sendUpdate('mirroredV',!state.mirroredV);
 fontFamilySelect.onchange=()=>sendUpdate('fontFamily',fontFamilySelect.value);
@@ -922,7 +962,7 @@ speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value;sendUpdate('sc
 textArea.oninput=()=>{
   const v=textArea.value;setTimeout(()=>sendUpdate('text',v),250);
   getActiveScript().text=v;state.text=v;previewText.textContent=v;
-  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();updateReadTime();updateMarkerPcts();
+  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();updateReadTime();updateMarkerPcts();updateSectionEndPcts();
 };
 undoBtn.onclick=()=>{textArea.focus();document.execCommand('undo');};
 redoBtn.onclick=()=>{textArea.focus();document.execCommand('redo');};
@@ -940,6 +980,21 @@ document.addEventListener('keydown',e=>{
   if(!inEditor&&(e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key==='z'){textArea.focus();document.execCommand('redo');textArea.blur();return;}
   if((e.key==='ArrowUp'||e.key==='ArrowDown')&&!inAnyInput){e.preventDefault();jumpToSentence(e.key==='ArrowDown'?sentenceIdx+1:sentenceIdx-1);}
 });
+
+// ── SECTION PAUSE / LOOP ─────────────────────────────────
+let sectionPauseMode=false,loopMode=false,pendingLoopSeek=null;
+let sectionEndPcts=[]; // [{pct, startPct}]
+function updateSectionEndPcts(){
+  if(!sectionPauseMode){sectionEndPcts=[];return;}
+  const secs=getParagraphs(state.text);
+  sectionEndPcts=secs.map(sec=>{
+    const last=sec.sentences[sec.sentences.length-1];
+    return{
+      pct: (()=>{try{return scrollPctFromChar(last.offset+last.len);}catch(e){return -1;}})(),
+      startPct:(()=>{try{return scrollPctFromChar(sec.sentences[0].offset);}catch(e){return 0;}})()
+    };
+  }).filter(e=>e.pct>=0&&e.pct<=1);
+}
 
 // ── MARKERS ──────────────────────────────────────────────
 let markerPcts=[];
@@ -974,14 +1029,23 @@ function handleData(msg){
   else if(msg.type==='scroll'){
     const prevPct=scrollPct;
     scrollPct=msg.position;
-    // Auto-pause at markers
+    // Auto-pause at sentence markers
+    let didPause=false;
     if(state.playState==='playing'&&markerPcts.length){
       for(const mPct of markerPcts){
         if(prevPct<mPct&&scrollPct>=mPct){
-          sendUpdate('playState','paused');
-          state.playState='paused';
-          renderControls();
-          break;
+          sendUpdate('playState','paused');state.playState='paused';renderControls();
+          didPause=true;break;
+        }
+      }
+    }
+    // Auto-pause at section ends
+    if(!didPause&&state.playState==='playing'&&sectionPauseMode&&sectionEndPcts.length){
+      for(const{pct:ePct,startPct}of sectionEndPcts){
+        if(prevPct<ePct&&scrollPct>=ePct){
+          sendUpdate('playState','paused');state.playState='paused';
+          if(loopMode)pendingLoopSeek=startPct;
+          renderControls();break;
         }
       }
     }
@@ -1012,7 +1076,7 @@ function enterMainPanel(){
   renderTabs();syncScript();textArea.value=state.text;
   sentenceStarts=buildSentenceStarts(state.text);
   updateMonitorScale();updateScrubber();checkRestore();
-  setTimeout(()=>{updateReadTime();updateMarkerPcts();},120);
+  setTimeout(()=>{updateReadTime();updateMarkerPcts();updateSectionEndPcts();},120);
   // Send current script to prompter now that the session is chosen
   if(conn&&conn.open){
     const payload={type:'state',data:{...state,text:getActiveScript().text}};
