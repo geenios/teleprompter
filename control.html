@@ -908,7 +908,9 @@ function caretAt(x,y,tn){
 let _hlCachePos=-999,_hlCache={startChar:0,endChar:0};
 function getHighlightRange(){
   // Only recompute when preview has scrolled more than ~4px (kills edge-of-line oscillation)
-  if(Math.abs(previewPos-_hlCachePos)<4)return _hlCache;
+  // Dynamic threshold: ~half a line height in preview coords (avoids boundary oscillation)
+  const _hlThresh=Math.max(4,state.fontSize*previewScale*0.5);
+  if(Math.abs(previewPos-_hlCachePos)<_hlThresh)return _hlCache;
   _hlCachePos=previewPos;
   const text=state.text,tn=getTextNode();
   if(!tn||!text.length)return{startChar:0,endChar:0};
@@ -1042,12 +1044,16 @@ function sendSentenceMarkers(){
 // Sends section boundary offsets to prompter so IT handles detection accurately
 function sendSectionBreaks(){
   if(!conn||!conn.open)return;
-  const breaks=sectionPauseMode?getParagraphs(state.text).map(sec=>({
-    endOffset:sec.sentences[sec.sentences.length-1].offset+sec.sentences[sec.sentences.length-1].len,
-    startOffset:sec.sentences[0].offset
-  })):[];
-  conn.send({type:'update',field:'sectionBreaks',value:breaks});
-  conn.send({type:'update',field:'loopMode',value:loopMode});
+  try{
+    const breaks=sectionPauseMode?getParagraphs(state.text)
+      .filter(sec=>sec.sentences&&sec.sentences.length>0)
+      .map(sec=>({
+        endOffset:sec.sentences[sec.sentences.length-1].offset+sec.sentences[sec.sentences.length-1].len,
+        startOffset:sec.sentences[0].offset
+      })):[];
+    conn.send({type:'update',field:'sectionBreaks',value:breaks});
+    conn.send({type:'update',field:'loopMode',value:loopMode});
+  }catch(e){console.warn('sendSectionBreaks:',e);}
 }
 let sectionPauseMode=false,loopMode=false;
 
@@ -1212,6 +1218,6 @@ setInterval(()=>{
   }
 },2000);
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v26</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v27</div>
 </body>
 </html>
