@@ -660,7 +660,12 @@
     }
     if (msg.field === 'sectionBreaks') {
       sectionBreaks = msg.value || [];
-      requestAnimationFrame(computeSectionBreakYs); return;
+      requestAnimationFrame(() => {
+        computeSectionBreakYs();
+        const d=document.getElementById('_secDbg');
+        if(d) d.textContent='breaks:'+sectionBreaks.length+' Ys:'+sectionBreakYs.length+' ['+sectionBreakYs.map(o=>Math.round(o.pauseAt)).join(',')+'] scrollMax:'+Math.round(scrollArea.scrollHeight-scrollArea.clientHeight);
+      });
+      return;
     }
     if (msg.field === 'loopMode') {
       loopModeActive = msg.value; return;
@@ -776,6 +781,7 @@
     if (document.visibilityState === 'visible') requestWakeLock();
   });
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v27</div>
+<div id="_secDbg" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,80,0,.85);color:#fff;font:11px monospace;padding:4px 8px;pointer-events:none;white-space:pre-wrap;">section diag: waiting…</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v28</div>
 </body>
 </html>

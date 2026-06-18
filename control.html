@@ -907,19 +907,22 @@ function caretAt(x,y,tn){
 }
 let _hlCachePos=-999,_hlCache={startChar:0,endChar:0};
 function getHighlightRange(){
-  // Only recompute when preview has scrolled more than ~4px (kills edge-of-line oscillation)
-  // Dynamic threshold: ~half a line height in preview coords (avoids boundary oscillation)
-  const _hlThresh=Math.max(4,state.fontSize*previewScale*0.5);
-  if(Math.abs(previewPos-_hlCachePos)<_hlThresh)return _hlCache;
-  _hlCachePos=previewPos;
   const text=state.text,tn=getTextNode();
   if(!tn||!text.length)return{startChar:0,endChar:0};
   const rect=previewBox.getBoundingClientRect();
   if(!rect.width||!rect.height)return{startChar:0,endChar:0};
-  // Skip partial top line only; include everything down to the very bottom
-  const lineH=Math.max(8, state.fontSize * previewScale * 0.5);
+  // Measure a single line's height once from the rendered text
+  const probe=document.createRange();
+  probe.setStart(tn,0);probe.setEnd(tn,Math.min(2,tn.length));
+  const lr=probe.getClientRects();
+  const lineH=(lr.length?lr[0].height:state.fontSize*previewScale*1.2)||16;
+  // Snap probe points to line centers: first fully-visible line and last fully-visible line.
+  // Because we probe at the CENTER of a line band, sub-line scroll changes never flip the
+  // detected character — the word count only changes when a full line crosses the edge.
+  const topProbe=rect.top+lineH*0.5;
+  const botProbe=rect.bottom-lineH*0.5;
   const x=rect.left+2;
-  let s=caretAt(x,rect.top+lineH,tn),e=caretAt(x,rect.bottom-2,tn);
+  let s=caretAt(x,topProbe,tn),e=caretAt(x,botProbe,tn);
   if(s===null)s=0;if(e===null)e=text.length;if(e<s){const t=s;s=e;e=t;}
   while(s>0&&/\S/.test(text[s-1])&&/\S/.test(text[s]))s--;
   while(e<text.length&&e>0&&/\S/.test(text[e-1])&&/\S/.test(text[e]))e++;
@@ -1218,6 +1221,6 @@ setInterval(()=>{
   }
 },2000);
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v27</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v28</div>
 </body>
 </html>
