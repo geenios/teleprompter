@@ -162,11 +162,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 /* (overrides the 60px set on .dv-sentence-row) */
 .dv-sentence-row{padding-right:110px;}
 /* Section-pause mode: dividers become yellow */
-.section-pause-on .dv-section{border-bottom-color:var(--accent);}
-.section-pause-on .dv-section:last-child{border-bottom:none;}
+.section-pause-on .dv-section:not(:last-child){border-bottom:2px solid var(--accent);}
+
 /* Director toolbar */
-#directorTools{display:none;align-items:center;gap:4px;}
+#directorTools{display:none;align-items:center;gap:4px;margin-left:2px;}
 .tb-btn.dv-active{background:rgba(255,200,0,.12);color:var(--accent);border-color:var(--accent);}
+/* Director sub-controls: smaller, lighter */
+.tb-btn.dv-ctrl{height:24px;font-size:11px;padding:0 9px;background:transparent;border-color:rgba(255,255,255,.15);color:var(--muted);}
+.tb-btn.dv-ctrl:disabled{opacity:.3;cursor:default;}
+.tb-btn.dv-ctrl.dv-active{background:rgba(255,200,0,.12);color:var(--accent);border-color:var(--accent);}
+/* Mode buttons: keep standard height, add slight weight */
+.tb-btn.mode{font-weight:600;}
 .tb-btn:disabled{opacity:.35;cursor:default;}
 /* Read time */
 #readTimeEl{font-size:11px;color:var(--muted);margin-left:auto;}
@@ -299,8 +305,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       </button>
       <div id="directorTools">
         <div class="tb-sep"></div>
-        <button class="tb-btn" id="sectionPauseBtn" title="Auto-pause at end of each section">⏸ Sections</button>
-        <button class="tb-btn" id="loopBtn" title="Loop section (replay from section start after pause)" disabled>↺ Loop</button>
+        <button class="tb-btn dv-ctrl" id="sectionPauseBtn" title="Auto-pause at end of each section">⏸ Sections</button>
+        <button class="tb-btn dv-ctrl" id="loopBtn" title="Loop section (replay from section start after pause)" disabled>↺ Loop</button>
       </div>
       <div class="tb-right">
         <button class="tb-btn" id="copyBtn">Copy</button>
@@ -461,6 +467,8 @@ let uiMode='editor';
 function setMode(m){
   uiMode=m;const dir=m==='director';
   if(directorToolsEl)directorToolsEl.style.display=dir?'flex':'none';
+  undoBtn.style.display=dir?'none':'';
+  redoBtn.style.display=dir?'none':'';
   editorModeBtn.classList.toggle('active',!dir);
   directorModeBtn.classList.toggle('active',dir);
   editorStack.style.display=dir?'none':'';
@@ -921,17 +929,24 @@ scrubberTrack.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*W
 function sendUpdate(f,v){if(conn&&conn.open)conn.send({type:'update',field:f,value:v});}
 playBtn.onclick=()=>{
   if(state.playState==='paused'&&loopMode&&pendingLoopSeek!==null){
-    sendUpdate('seek',pendingLoopSeek);
-    scrollPct=pendingLoopSeek;correctPreview(pendingLoopSeek);
-    renderHighlight();updateScrubber();
+    // Send seek first; delay play so prompter processes seek before starting
+    const seekTo=pendingLoopSeek;
     pendingLoopSeek=null;
+    sendUpdate('seek',seekTo);
+    scrollPct=seekTo;correctPreview(seekTo);renderHighlight();updateScrubber();
+    setTimeout(()=>{
+      state.playState='playing';
+      sendUpdate('playState','playing');
+      renderControls();
+    },80);
+    return;
   }
   const v=state.playState==='playing'?'paused':'playing';
   state.playState=v;
   playBtn.textContent=v==='playing'?'Pause':'Play';
   playBtn.classList.toggle('active',v==='playing');
   sendUpdate('playState',v);
-  if(v==='paused')pendingLoopSeek=null; // manual pause clears pending loop
+  if(v==='paused')pendingLoopSeek=null;
 };
 resetBtn.onclick=()=>{sendUpdate('reset',true);scrollPct=0;previewPos=0;previewBox.scrollTop=0;sentenceIdx=0;renderHighlight();updateScrubber();};
 // Director toolbar
@@ -940,7 +955,7 @@ sectionPauseBtn.onclick=()=>{
   sectionPauseMode=!sectionPauseMode;
   sectionPauseBtn.classList.toggle('dv-active',sectionPauseMode);
   loopBtn.disabled=!sectionPauseMode;
-  if(!sectionPauseMode){loopMode=false;loopBtn.classList.remove('dv-active');pendingLoopSeek=null;}
+  if(!sectionPauseMode){loopMode=false;loopBtn.classList.remove('dv-active');loopBtn.style.opacity='';pendingLoopSeek=null;}
   directorView.classList.toggle('section-pause-on',sectionPauseMode);
   updateSectionEndPcts();
 };
@@ -989,20 +1004,26 @@ function updateSectionEndPcts(){
   const secs=getParagraphs(state.text);
   sectionEndPcts=secs.map(sec=>{
     const last=sec.sentences[sec.sentences.length-1];
-    return{
-      pct: (()=>{try{return scrollPctFromChar(last.offset+last.len);}catch(e){return -1;}})(),
-      startPct:(()=>{try{return scrollPctFromChar(sec.sentences[0].offset);}catch(e){return 0;}})()
-    };
+    const pct=pausePct(last.offset+last.len);
+    const startPct=(()=>{try{return scrollPctFromChar(sec.sentences[0].offset);}catch(e){return 0;}})();
+    return{pct,startPct};
   }).filter(e=>e.pct>=0&&e.pct<=1);
 }
 
 // ── MARKERS ──────────────────────────────────────────────
 let markerPcts=[];
+function viewportFraction(){
+  // Fraction of scrollable range occupied by one viewport height (preview)
+  const max=Math.max(1,previewText.scrollHeight-previewBox.clientHeight);
+  return previewBox.clientHeight/max;
+}
+function pausePct(offset){
+  // Returns the scroll pct at which 'offset' char appears at BOTTOM of viewport
+  try{return Math.max(0,scrollPctFromChar(offset)-viewportFraction());}catch(e){return -1;}
+}
 function updateMarkerPcts(){
   const markers=(getActiveScript().markers||[]).filter(o=>o<state.text.length);
-  markerPcts=markers.map(offset=>{
-    try{return scrollPctFromChar(offset);}catch(e){return -1;}
-  }).filter(p=>p>=0&&p<=1);
+  markerPcts=markers.map(pausePct).filter(p=>p>=0&&p<=1);
 }
 
 // ── READ TIME ─────────────────────────────────────────────
