@@ -574,7 +574,7 @@ function renderDirectorView(){
         const mi=scr.markers.indexOf(sentEnd);
         if(mi===-1)scr.markers.push(sentEnd);
         else scr.markers.splice(mi,1);
-        persistSession();updateMarkerPcts();renderDirectorView();
+        persistSession();sendSentenceMarkers();renderDirectorView();
       };
       row.appendChild(mBtn);
       // + Add note (abs positioned, no layout shift)
@@ -630,9 +630,15 @@ function highlightDirector(){
   if(first){
     cancelAnimationFrame(dvDebounce);
     dvDebounce=requestAnimationFrame(()=>{
-      // Direct scrollTop manipulation — more reliable than scrollIntoView
-      const rowTop=first.getBoundingClientRect().top-directorView.getBoundingClientRect().top+directorView.scrollTop;
-      directorView.scrollTop=Math.max(0,rowTop-directorView.clientHeight/2+first.offsetHeight/2);
+      const dvRect=directorView.getBoundingClientRect();
+      const rRect=first.getBoundingClientRect();
+      const relBot=rRect.bottom-dvRect.top;
+      // Only jump when highlight passes 75% of visible area (page-turn style)
+      // Never jump up when user scrolls ahead — only jump down when text progresses
+      if(relBot>directorView.clientHeight*0.75){
+        const absTop=rRect.top-dvRect.top+directorView.scrollTop;
+        directorView.scrollTop=Math.max(0,absTop-28);
+      }
     });
   }
 }
@@ -982,7 +988,7 @@ speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value;sendUpdate('sc
 textArea.oninput=()=>{
   const v=textArea.value;setTimeout(()=>sendUpdate('text',v),250);
   getActiveScript().text=v;state.text=v;previewText.textContent=v;
-  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();updateReadTime();updateMarkerPcts();sendSectionBreaks();
+  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();updateReadTime();sendSectionBreaks();sendSentenceMarkers();
 };
 undoBtn.onclick=()=>{textArea.focus();document.execCommand('undo');};
 redoBtn.onclick=()=>{textArea.focus();document.execCommand('redo');};
@@ -1002,6 +1008,12 @@ document.addEventListener('keydown',e=>{
 });
 
 // ── SECTION PAUSE / LOOP ─────────────────────────────────
+// Sends sentence marker end offsets to prompter
+function sendSentenceMarkers(){
+  if(!conn||!conn.open)return;
+  conn.send({type:'update',field:'sentenceMarkers',value:getActiveScript().markers||[]});
+}
+
 // Sends section boundary offsets to prompter so IT handles detection accurately
 function sendSectionBreaks(){
   if(!conn||!conn.open)return;
@@ -1015,21 +1027,7 @@ function sendSectionBreaks(){
 let sectionPauseMode=false,loopMode=false;
 
 
-// ── MARKERS ──────────────────────────────────────────────
-let markerPcts=[];
-function viewportFraction(){
-  // Fraction of scrollable range occupied by one viewport height (preview)
-  const max=Math.max(1,previewText.scrollHeight-previewBox.clientHeight);
-  return previewBox.clientHeight/max;
-}
-function pausePct(offset){
-  // Pause when char is roughly 85% down the viewport (clearly visible, not at edge)
-  try{return Math.max(0,scrollPctFromChar(offset)-viewportFraction()*0.15);}catch(e){return -1;}
-}
-function updateMarkerPcts(){
-  const markers=(getActiveScript().markers||[]).filter(o=>o<state.text.length);
-  markerPcts=markers.map(pausePct).filter(p=>p>=0&&p<=1);
-}
+// ── MARKERS — detection handled by prompter; control only sends offsets ──
 
 // ── READ TIME ─────────────────────────────────────────────
 function updateReadTime(){
@@ -1055,14 +1053,7 @@ function handleData(msg){
   else if(msg.type==='scroll'){
     const prevPct=scrollPct;
     scrollPct=msg.position;
-    // Auto-pause at sentence markers
-    if(state.playState==='playing'&&markerPcts.length){
-      for(const mPct of markerPcts){
-        if(prevPct<mPct&&scrollPct>=mPct){
-          sendUpdate('playState','paused');state.playState='paused';renderControls();break;
-        }
-      }
-    }
+    // (sentence marker auto-pause handled by prompter)
 
     if(!draggingPreview)correctPreview(scrollPct);renderHighlight();updateScrubber();
   }
@@ -1091,7 +1082,7 @@ function enterMainPanel(){
   renderTabs();syncScript();textArea.value=state.text;
   sentenceStarts=buildSentenceStarts(state.text);
   updateMonitorScale();updateScrubber();checkRestore();
-  setTimeout(()=>{updateReadTime();updateMarkerPcts();},120);
+  setTimeout(()=>{updateReadTime();sendSectionBreaks();sendSentenceMarkers();},120);
   // Send current script to prompter now that the session is chosen
   if(conn&&conn.open){
     const payload={type:'state',data:{...state,text:getActiveScript().text}};
@@ -1151,7 +1142,7 @@ function startHost(){
       syncScript();
       const payload={type:'state',data:{...state,text:getActiveScript().text}};
       conn.send(payload);
-      setTimeout(()=>{if(conn&&conn.open){conn.send(payload);sendSectionBreaks();}},400);
+      setTimeout(()=>{if(conn&&conn.open){conn.send(payload);sendSectionBreaks();sendSentenceMarkers();}},400);
     });
     conn.on('data',handleData);
     conn.on('close',()=>{

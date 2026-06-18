@@ -494,6 +494,29 @@
   let pendingLoopY   = null;  // px position to seek when play is pressed (loop)
   let sectionBreakYs = [];    // [{pauseAt (px), startY (px)}] — computed
 
+  let sentenceMarkers   = [];  // end offsets from control
+  let sentenceMarkerYs  = [];  // pauseAt px positions
+
+  function computeSentenceMarkerYs() {
+    sentenceMarkerYs = [];
+    if (!sentenceMarkers.length) return;
+    const tn = textContent.firstChild;
+    if (!tn || !tn.textContent) return;
+    const len = tn.textContent.length;
+    const sRect = scrollArea.getBoundingClientRect();
+    try {
+      const range = document.createRange();
+      for (const endOff of sentenceMarkers) {
+        const off = Math.max(0, Math.min(endOff, len - 1));
+        range.setStart(tn, off);
+        const rects = range.getClientRects();
+        if (!rects.length) continue;
+        const absY = rects[0].top - sRect.top + scrollArea.scrollTop;
+        sentenceMarkerYs.push(Math.max(0, absY - scrollArea.clientHeight * 0.4));
+      }
+    } catch(e) {}
+  }
+
   function computeSectionBreakYs() {
     sectionBreakYs = [];
     if (!sectionBreaks.length) return;
@@ -533,6 +556,7 @@
       setScroll(pct * newMax);
       if ('text' in partial || 'fontSize' in partial || 'fontFamily' in partial) {
         computeSectionBreakYs();
+        computeSentenceMarkerYs();
       }
     });
     broadcastState();
@@ -547,6 +571,14 @@
       if (lastTime !== null) {
         const max = scrollArea.scrollHeight - scrollArea.clientHeight;
         const next = scrollPosition + state.scrollSpeed * (ts - lastTime) / 1000;
+        // Check sentence marker pause points
+        for (const pauseAt of sentenceMarkerYs) {
+          if (scrollPosition < pauseAt && next >= pauseAt) {
+            setScroll(pauseAt); lastTime = null;
+            updateState({ playState: 'paused' });
+            requestAnimationFrame(tick); return;
+          }
+        }
         // Check section break points
         for (const {pauseAt, startY} of sectionBreakYs) {
           if (scrollPosition < pauseAt && next >= pauseAt) {
@@ -614,7 +646,13 @@
     if (msg.field === 'reset') { setScroll(0); broadcastScroll(); return; }
     if (msg.field === 'seek') {
       const max = scrollArea.scrollHeight - scrollArea.clientHeight;
-      setScroll(msg.value * Math.max(0, max)); return;
+      setScroll(msg.value * Math.max(0, max));
+      pendingLoopY = null;  // manual seek cancels pending loop
+      return;
+    }
+    if (msg.field === 'sentenceMarkers') {
+      sentenceMarkers = msg.value || [];
+      requestAnimationFrame(computeSentenceMarkerYs); return;
     }
     if (msg.field === 'sectionBreaks') {
       sectionBreaks = msg.value || [];
