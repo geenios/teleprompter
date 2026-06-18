@@ -633,11 +633,11 @@ function highlightDirector(){
       const dvRect=directorView.getBoundingClientRect();
       const rRect=first.getBoundingClientRect();
       const relBot=rRect.bottom-dvRect.top;
-      // Only jump when highlight passes 75% of visible area (page-turn style)
-      // Never jump up when user scrolls ahead — only jump down when text progresses
-      if(relBot>directorView.clientHeight*0.75){
-        const absTop=rRect.top-dvRect.top+directorView.scrollTop;
-        directorView.scrollTop=Math.max(0,absTop-28);
+      // Jump only when highlight is still within the viewport (relTop < dvH)
+      // AND its bottom passes the 75% mark — never fight upward scrolling
+      if(relBot > directorView.clientHeight * 0.75 && relTop < directorView.clientHeight){
+        const absTop = rRect.top - dvRect.top + directorView.scrollTop;
+        directorView.scrollTop = Math.max(0, absTop - 28);
       }
     });
   }
@@ -893,7 +893,10 @@ function getHighlightRange(){
   if(!tn||!text.length)return{startChar:0,endChar:0};
   const rect=previewBox.getBoundingClientRect();
   if(!rect.width||!rect.height)return{startChar:0,endChar:0};
-  const x=rect.left+2;let s=caretAt(x,rect.top+1,tn),e=caretAt(x,rect.bottom-1,tn);
+  // Skip partially-visible lines at edges using ~one line height as inset
+  const lineH=Math.max(12, state.fontSize * previewScale * 1.1);
+  const x=rect.left+2;
+  let s=caretAt(x,rect.top+lineH,tn),e=caretAt(x,rect.bottom-lineH,tn);
   if(s===null)s=0;if(e===null)e=text.length;if(e<s){const t=s;s=e;e=t;}
   while(s>0&&/\S/.test(text[s-1])&&/\S/.test(text[s]))s--;
   while(e<text.length&&e>0&&/\S/.test(text[e-1])&&/\S/.test(text[e]))e++;
