@@ -524,7 +524,7 @@ function jumpToSentence(idx){
 }
 
 // ── DIRECTOR VIEW ─────────────────────────────────────────
-let dvDebounce=null;
+let _dvPrevStart=-1, _dvLastRow=null;
 function renderDirectorView(){
   const scr=getActiveScript(),notes=getNotesFor(scr.id),secs=getParagraphs(scr.text);
   directorView.innerHTML='';
@@ -617,26 +617,34 @@ function highlightDirector(){
   if(uiMode!=='director')return;
   const{startChar,endChar}=getHighlightRange();
   let first=null;
-  directorView.querySelectorAll('.dv-sentence-row').forEach(row=>{
-    const s=parseInt(row.dataset.start),e=parseInt(row.dataset.end),raw=row.dataset.raw||'';
-    const textEl=row.querySelector('.dv-sent-text');
-    if(e<=startChar||s>=endChar){textEl.textContent=raw;}
-    else{
-      const vs=Math.max(0,startChar-s),ve=Math.min(raw.length,endChar-s);
-      textEl.innerHTML=escHtml(raw.slice(0,vs))+(ve>vs?'<mark class="dv-hl">'+escHtml(raw.slice(vs,ve))+'</mark>':'')+escHtml(raw.slice(ve));
-      if(!first)first=row;
-    }
-  });
-  if(first){
-    // Run directly — no RAF debounce (previewTick calls this at 60fps and debounce cancels itself)
+  // Re-render sentence DOM only when range changes — not every 60fps previewTick frame
+  if(startChar!==_dvPrevStart){
+    _dvPrevStart=startChar;
+    directorView.querySelectorAll('.dv-sentence-row').forEach(row=>{
+      const s=parseInt(row.dataset.start),e=parseInt(row.dataset.end),raw=row.dataset.raw||'';
+      const textEl=row.querySelector('.dv-sent-text');
+      if(e<=startChar||s>=endChar){textEl.textContent=raw;}
+      else{
+        const vs=Math.max(0,startChar-s),ve=Math.min(raw.length,endChar-s);
+        textEl.innerHTML=escHtml(raw.slice(0,vs))+(ve>vs?'<mark class="dv-hl">'+escHtml(raw.slice(vs,ve))+'</mark>':'')+escHtml(raw.slice(ve));
+        if(!first)first=row;
+      }
+    });
+  } else {
+    first=directorView.querySelector('mark.dv-hl')?.closest('.dv-sentence-row')||null;
+  }
+  // Auto-scroll ONLY when the highlighted row itself changes (reading progressed).
+  // Same row = user is manually scrolling — don't interfere.
+  if(first && first!==_dvLastRow){
+    _dvLastRow=first;
     const dvRect=directorView.getBoundingClientRect();
     const rRect=first.getBoundingClientRect();
     const relTop=rRect.top-dvRect.top;
     const relBot=rRect.bottom-dvRect.top;
     const dvH=directorView.clientHeight;
-    // Jump when highlight nears bottom 25%; never fight user scrolling up (relTop < dvH guard)
-    if(relBot > dvH * 0.75 && relTop < dvH){
-      directorView.scrollTop=Math.max(0, relTop + directorView.scrollTop - 28);
+    // Page-turn jump at 75%, or rescue if completely off screen in either direction
+    if(relBot>dvH*0.75 || relTop>dvH || relBot<0){
+      directorView.scrollTop=Math.max(0, relTop+directorView.scrollTop-28);
     }
   }
 }

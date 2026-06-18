@@ -512,7 +512,7 @@
         const rects = range.getClientRects();
         if (!rects.length) continue;
         const absY = rects[0].top - sRect.top + scrollArea.scrollTop;
-        sentenceMarkerYs.push(Math.max(0, absY - scrollArea.clientHeight * 0.72 + 8));
+        sentenceMarkerYs.push(Math.max(0, absY - scrollArea.clientHeight * 0.75));
       }
     } catch(e) {}
   }
@@ -527,20 +527,17 @@
     try {
       const range = document.createRange();
       for (const {endOffset, startOffset} of sectionBreaks) {
+        // Exact same collapsed-range pattern as computeSentenceMarkerYs (which works)
         const endOff = Math.max(0, Math.min(endOffset, len - 1));
-        // Use char just before section end — avoids collapsed-range-at-newline issue
-        const refOff = Math.max(0, endOff - 1);
-        range.setStart(tn, refOff);
-        range.setEnd(tn, Math.min(refOff + 1, len));
+        range.setStart(tn, endOff);
         const rects = range.getClientRects();
         if (!rects.length) continue;
-        // Absolute Y = viewport-relative + scrollTop - container top
         const endAbsY = rects[0].top - sRect.top + scrollArea.scrollTop;
-        const pauseAt = Math.max(0, endAbsY - scrollArea.clientHeight * 0.72 + 8);
+        const pauseAt = Math.max(0, endAbsY - scrollArea.clientHeight * 0.75);
 
+        // Section start Y for loop-back
         const startOff = Math.max(0, Math.min(startOffset, len - 1));
         range.setStart(tn, startOff);
-        range.setEnd(tn, Math.min(startOff + 1, len));
         const sRects = range.getClientRects();
         const startAbsY = sRects.length ? sRects[0].top - sRect.top + scrollArea.scrollTop : 0;
 
