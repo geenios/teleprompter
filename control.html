@@ -897,10 +897,10 @@ function getHighlightRange(){
   if(!tn||!text.length)return{startChar:0,endChar:0};
   const rect=previewBox.getBoundingClientRect();
   if(!rect.width||!rect.height)return{startChar:0,endChar:0};
-  // Skip partially-visible lines at edges using ~one line height as inset
-  const lineH=Math.max(8, state.fontSize * previewScale * 0.6);
+  // Skip partial top line only; include everything down to the very bottom
+  const lineH=Math.max(8, state.fontSize * previewScale * 0.5);
   const x=rect.left+2;
-  let s=caretAt(x,rect.top+lineH,tn),e=caretAt(x,rect.bottom-lineH,tn);
+  let s=caretAt(x,rect.top+lineH,tn),e=caretAt(x,rect.bottom-2,tn);
   if(s===null)s=0;if(e===null)e=text.length;if(e<s){const t=s;s=e;e=t;}
   while(s>0&&/\S/.test(text[s-1])&&/\S/.test(text[s]))s--;
   while(e<text.length&&e>0&&/\S/.test(text[e-1])&&/\S/.test(text[e]))e++;

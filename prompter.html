@@ -528,16 +528,21 @@
       const range = document.createRange();
       for (const {endOffset, startOffset} of sectionBreaks) {
         const endOff = Math.max(0, Math.min(endOffset, len - 1));
-        range.setStart(tn, endOff);
+        // Walk back past trailing newlines/whitespace — collapsed ranges on \n return no rects
+        let refOff = endOff;
+        while (refOff > 0 && /[\s\n\r]/.test(tn.textContent[refOff - 1])) refOff--;
+        if (refOff <= 0) continue;
+        range.setStart(tn, refOff - 1);
+        range.setEnd(tn, refOff);
         const rects = range.getClientRects();
         if (!rects.length) continue;
         // Absolute Y = viewport-relative + scrollTop - container top
         const endAbsY = rects[0].top - sRect.top + scrollArea.scrollTop;
-        // Pause when char is 40% viewport from bottom = 60% down screen
         const pauseAt = Math.max(0, endAbsY - scrollArea.clientHeight * 0.72);
 
         const startOff = Math.max(0, Math.min(startOffset, len - 1));
         range.setStart(tn, startOff);
+        range.setEnd(tn, Math.min(startOff + 1, len));
         const sRects = range.getClientRects();
         const startAbsY = sRects.length ? sRects[0].top - sRect.top + scrollArea.scrollTop : 0;
 
