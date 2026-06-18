@@ -512,7 +512,7 @@
         const rects = range.getClientRects();
         if (!rects.length) continue;
         const absY = rects[0].top - sRect.top + scrollArea.scrollTop;
-        sentenceMarkerYs.push(Math.max(0, absY - scrollArea.clientHeight * 0.9));
+        sentenceMarkerYs.push(Math.max(0, absY - scrollArea.clientHeight * 0.72));
       }
     } catch(e) {}
   }
@@ -534,7 +534,7 @@
         // Absolute Y = viewport-relative + scrollTop - container top
         const endAbsY = rects[0].top - sRect.top + scrollArea.scrollTop;
         // Pause when char is 40% viewport from bottom = 60% down screen
-        const pauseAt = Math.max(0, endAbsY - scrollArea.clientHeight * 0.9);
+        const pauseAt = Math.max(0, endAbsY - scrollArea.clientHeight * 0.72);
 
         const startOff = Math.max(0, Math.min(startOffset, len - 1));
         range.setStart(tn, startOff);

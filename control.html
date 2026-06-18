@@ -888,19 +888,24 @@ function caretAt(x,y,tn){
   else if(document.caretPositionFromPoint){const p=document.caretPositionFromPoint(x,y);if(p){if(p.offsetNode===tn)return p.offset;if(p.offsetNode===previewText)return p.offset===0?0:tn.length;}}
   return null;
 }
+let _hlCachePos=-999,_hlCache={startChar:0,endChar:0};
 function getHighlightRange(){
+  // Only recompute when preview has scrolled more than ~4px (kills edge-of-line oscillation)
+  if(Math.abs(previewPos-_hlCachePos)<4)return _hlCache;
+  _hlCachePos=previewPos;
   const text=state.text,tn=getTextNode();
   if(!tn||!text.length)return{startChar:0,endChar:0};
   const rect=previewBox.getBoundingClientRect();
   if(!rect.width||!rect.height)return{startChar:0,endChar:0};
   // Skip partially-visible lines at edges using ~one line height as inset
-  const lineH=Math.max(12, state.fontSize * previewScale * 1.1);
+  const lineH=Math.max(8, state.fontSize * previewScale * 0.6);
   const x=rect.left+2;
   let s=caretAt(x,rect.top+lineH,tn),e=caretAt(x,rect.bottom-lineH,tn);
   if(s===null)s=0;if(e===null)e=text.length;if(e<s){const t=s;s=e;e=t;}
   while(s>0&&/\S/.test(text[s-1])&&/\S/.test(text[s]))s--;
   while(e<text.length&&e>0&&/\S/.test(text[e-1])&&/\S/.test(text[e]))e++;
-  return{startChar:s,endChar:e};
+  _hlCache={startChar:s,endChar:e};
+  return _hlCache;
 }
 function scrollPctFromChar(ci){
   const tn=getTextNode(),max=Math.max(0,previewText.scrollHeight-previewBox.clientHeight);
