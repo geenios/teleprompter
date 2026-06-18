@@ -905,29 +905,17 @@ function caretAt(x,y,tn){
   else if(document.caretPositionFromPoint){const p=document.caretPositionFromPoint(x,y);if(p){if(p.offsetNode===tn)return p.offset;if(p.offsetNode===previewText)return p.offset===0?0:tn.length;}}
   return null;
 }
-let _hlCachePos=-999,_hlCache={startChar:0,endChar:0};
 function getHighlightRange(){
   const text=state.text,tn=getTextNode();
   if(!tn||!text.length)return{startChar:0,endChar:0};
   const rect=previewBox.getBoundingClientRect();
   if(!rect.width||!rect.height)return{startChar:0,endChar:0};
-  // Measure a single line's height once from the rendered text
-  const probe=document.createRange();
-  probe.setStart(tn,0);probe.setEnd(tn,Math.min(2,tn.length));
-  const lr=probe.getClientRects();
-  const lineH=(lr.length?lr[0].height:state.fontSize*previewScale*1.2)||16;
-  // Snap probe points to line centers: first fully-visible line and last fully-visible line.
-  // Because we probe at the CENTER of a line band, sub-line scroll changes never flip the
-  // detected character — the word count only changes when a full line crosses the edge.
-  const topProbe=rect.top+lineH*0.5;
-  const botProbe=rect.bottom-lineH*0.5;
   const x=rect.left+2;
-  let s=caretAt(x,topProbe,tn),e=caretAt(x,botProbe,tn);
+  let s=caretAt(x,rect.top+1,tn),e=caretAt(x,rect.bottom-1,tn);
   if(s===null)s=0;if(e===null)e=text.length;if(e<s){const t=s;s=e;e=t;}
   while(s>0&&/\S/.test(text[s-1])&&/\S/.test(text[s]))s--;
   while(e<text.length&&e>0&&/\S/.test(text[e-1])&&/\S/.test(text[e]))e++;
-  _hlCache={startChar:s,endChar:e};
-  return _hlCache;
+  return{startChar:s,endChar:e};
 }
 function scrollPctFromChar(ci){
   const tn=getTextNode(),max=Math.max(0,previewText.scrollHeight-previewBox.clientHeight);
@@ -998,7 +986,7 @@ sectionPauseBtn.onclick=()=>{
   loopBtn.disabled=!sectionPauseMode;
   if(!sectionPauseMode){loopMode=false;loopBtn.classList.remove('dv-active');loopBtn.style.opacity='';}
   directorView.classList.toggle('section-pause-on',sectionPauseMode);
-  
+  sendSectionBreaks();
 };
 loopBtn.onclick=()=>{
   if(!sectionPauseMode)return;
@@ -1045,6 +1033,7 @@ function sendSentenceMarkers(){
 }
 
 // Sends section boundary offsets to prompter so IT handles detection accurately
+let sectionPauseMode=false,loopMode=false;
 function sendSectionBreaks(){
   if(!conn||!conn.open)return;
   try{
@@ -1058,7 +1047,6 @@ function sendSectionBreaks(){
     conn.send({type:'update',field:'loopMode',value:loopMode});
   }catch(e){console.warn('sendSectionBreaks:',e);}
 }
-let sectionPauseMode=false,loopMode=false;
 
 
 // ── MARKERS — detection handled by prompter; control only sends offsets ──
@@ -1221,6 +1209,6 @@ setInterval(()=>{
   }
 },2000);
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v28</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v29</div>
 </body>
 </html>
