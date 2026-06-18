@@ -488,6 +488,41 @@
     programmatic = false;
   }
 
+  // ── SECTION BREAKS (sent from control) ─────────────────
+  let sectionBreaks = [];     // [{endOffset, startOffset}]
+  let loopModeActive = false;
+  let pendingLoopY   = null;  // px position to seek when play is pressed (loop)
+  let sectionBreakYs = [];    // [{pauseAt (px), startY (px)}] — computed
+
+  function computeSectionBreakYs() {
+    sectionBreakYs = [];
+    if (!sectionBreaks.length) return;
+    const tn = textContent.firstChild;
+    if (!tn || !tn.textContent) return;
+    const len = tn.textContent.length;
+    const sRect = scrollArea.getBoundingClientRect();
+    try {
+      const range = document.createRange();
+      for (const {endOffset, startOffset} of sectionBreaks) {
+        const endOff = Math.max(0, Math.min(endOffset, len - 1));
+        range.setStart(tn, endOff);
+        const rects = range.getClientRects();
+        if (!rects.length) continue;
+        // Absolute Y = viewport-relative + scrollTop - container top
+        const endAbsY = rects[0].top - sRect.top + scrollArea.scrollTop;
+        // Pause when char is 40% viewport from bottom = 60% down screen
+        const pauseAt = Math.max(0, endAbsY - scrollArea.clientHeight * 0.4);
+
+        const startOff = Math.max(0, Math.min(startOffset, len - 1));
+        range.setStart(tn, startOff);
+        const sRects = range.getClientRects();
+        const startAbsY = sRects.length ? sRects[0].top - sRect.top + scrollArea.scrollTop : 0;
+
+        sectionBreakYs.push({ pauseAt, startY: Math.max(0, startAbsY) });
+      }
+    } catch(e) {}
+  }
+
   function updateState(partial) {
     const max = scrollArea.scrollHeight - scrollArea.clientHeight;
     const pct = max > 0 ? scrollPosition / max : 0;
@@ -496,6 +531,9 @@
     requestAnimationFrame(() => {
       const newMax = scrollArea.scrollHeight - scrollArea.clientHeight;
       setScroll(pct * newMax);
+      if ('text' in partial || 'fontSize' in partial || 'fontFamily' in partial) {
+        computeSectionBreakYs();
+      }
     });
     broadcastState();
   }
@@ -509,12 +547,19 @@
       if (lastTime !== null) {
         const max = scrollArea.scrollHeight - scrollArea.clientHeight;
         const next = scrollPosition + state.scrollSpeed * (ts - lastTime) / 1000;
+        // Check section break points
+        for (const {pauseAt, startY} of sectionBreakYs) {
+          if (scrollPosition < pauseAt && next >= pauseAt) {
+            setScroll(pauseAt); lastTime = null;
+            if (loopModeActive) pendingLoopY = startY;
+            updateState({ playState: 'paused' });
+            requestAnimationFrame(tick); return;
+          }
+        }
         if (max > 0 && next >= max) {
-          setScroll(max);
-          lastTime = null;
-          updateState({ playState: 'paused' }); // broadcasts to control
-          requestAnimationFrame(tick);
-          return;
+          setScroll(max); lastTime = null;
+          updateState({ playState: 'paused' });
+          requestAnimationFrame(tick); return;
         }
         setScroll(next);
       }
@@ -570,6 +615,20 @@
     if (msg.field === 'seek') {
       const max = scrollArea.scrollHeight - scrollArea.clientHeight;
       setScroll(msg.value * Math.max(0, max)); return;
+    }
+    if (msg.field === 'sectionBreaks') {
+      sectionBreaks = msg.value || [];
+      requestAnimationFrame(computeSectionBreakYs); return;
+    }
+    if (msg.field === 'loopMode') {
+      loopModeActive = msg.value; return;
+    }
+    // Loop: intercept play to seek to section start first
+    if (msg.field === 'playState' && msg.value === 'playing' && pendingLoopY !== null) {
+      const ly = pendingLoopY; pendingLoopY = null;
+      setScroll(ly);
+      setTimeout(() => updateState({ playState: 'playing' }), 30);
+      return;
     }
     updateState({ [msg.field]: msg.value });
   }

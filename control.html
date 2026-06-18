@@ -156,13 +156,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .dv-marker-btn.active{display:block;color:var(--accent);}
 .dv-sentence-row.has-marker::after{
   content:'';position:absolute;bottom:0;left:0;right:0;
-  height:2px;background:var(--accent);pointer-events:none;
+  height:1px;background:var(--accent);pointer-events:none;
 }
 /* Widen row right padding to fit both abs buttons */
 /* (overrides the 60px set on .dv-sentence-row) */
 .dv-sentence-row{padding-right:110px;}
 /* Section-pause mode: dividers become yellow */
-.section-pause-on .dv-section:not(:last-child){border-bottom:2px solid var(--accent);}
+.section-pause-on .dv-section:not(:last-child){border-bottom:1px solid var(--accent);}
 
 /* Director toolbar */
 #directorTools{display:none;align-items:center;gap:4px;margin-left:2px;}
@@ -242,6 +242,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
   <div id="codeBox">
     <div id="qrCanvas"></div>
     <div id="hostCode">------</div>
+  </div>
+</div>
+
+<!-- ── DELETE CONFIRM MODAL ── -->
+<div id="deleteModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:28px 24px;width:320px;display:flex;flex-direction:column;gap:16px;">
+    <div style="font-size:15px;font-weight:600;color:var(--text);">Delete script</div>
+    <div id="deleteModalMsg" style="font-size:13px;color:var(--muted);"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="deleteModalCancel" style="background:none;border:1px solid var(--border);color:var(--muted);padding:9px 18px;border-radius:8px;font-size:14px;cursor:pointer;">Cancel</button>
+      <button id="deleteModalConfirm" style="background:#e55;border:none;color:#fff;padding:9px 18px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Delete</button>
+    </div>
   </div>
 </div>
 
@@ -694,10 +706,17 @@ function addScript(){
 }
 function deleteScript(id){
   const scr=session.scripts.find(s=>s.id===id);if(!scr)return;
-  if(!confirm('Delete "'+scr.name+'"? This cannot be undone.'))return;
-  session.scripts=session.scripts.filter(s=>s.id!==id);
-  if(session.activeId===id)session.activeId=session.scripts[0].id;
-  persistSession();syncScript();textArea.value=state.text;renderTabs();renderControls();sendUpdate('text',state.text);
+  const modal=document.getElementById('deleteModal');
+  document.getElementById('deleteModalMsg').textContent='Delete "'+scr.name+'"? This cannot be undone.';
+  modal.style.display='flex';
+  document.getElementById('deleteModalConfirm').onclick=()=>{
+    modal.style.display='none';
+    session.scripts=session.scripts.filter(s=>s.id!==id);
+    if(session.activeId===id)session.activeId=session.scripts[0].id;
+    persistSession();syncScript();textArea.value=state.text;renderTabs();renderControls();sendUpdate('text',state.text);
+  };
+  document.getElementById('deleteModalCancel').onclick=()=>{modal.style.display='none';};
+  modal.onclick=e=>{if(e.target===modal)modal.style.display='none';};
 }
 addTabBtn.onclick=addScript;
 
@@ -928,25 +947,11 @@ scrubberTrack.addEventListener('wheel',e=>{e.preventDefault();scrubPx(e.deltaY*W
 // ── OUTGOING ──────────────────────────────────────────────
 function sendUpdate(f,v){if(conn&&conn.open)conn.send({type:'update',field:f,value:v});}
 playBtn.onclick=()=>{
-  if(state.playState==='paused'&&loopMode&&pendingLoopSeek!==null){
-    // Send seek first; delay play so prompter processes seek before starting
-    const seekTo=pendingLoopSeek;
-    pendingLoopSeek=null;
-    sendUpdate('seek',seekTo);
-    scrollPct=seekTo;correctPreview(seekTo);renderHighlight();updateScrubber();
-    setTimeout(()=>{
-      state.playState='playing';
-      sendUpdate('playState','playing');
-      renderControls();
-    },80);
-    return;
-  }
   const v=state.playState==='playing'?'paused':'playing';
   state.playState=v;
   playBtn.textContent=v==='playing'?'Pause':'Play';
   playBtn.classList.toggle('active',v==='playing');
   sendUpdate('playState',v);
-  if(v==='paused')pendingLoopSeek=null;
 };
 resetBtn.onclick=()=>{sendUpdate('reset',true);scrollPct=0;previewPos=0;previewBox.scrollTop=0;sentenceIdx=0;renderHighlight();updateScrubber();};
 // Director toolbar
@@ -955,15 +960,15 @@ sectionPauseBtn.onclick=()=>{
   sectionPauseMode=!sectionPauseMode;
   sectionPauseBtn.classList.toggle('dv-active',sectionPauseMode);
   loopBtn.disabled=!sectionPauseMode;
-  if(!sectionPauseMode){loopMode=false;loopBtn.classList.remove('dv-active');loopBtn.style.opacity='';pendingLoopSeek=null;}
+  if(!sectionPauseMode){loopMode=false;loopBtn.classList.remove('dv-active');loopBtn.style.opacity='';}
   directorView.classList.toggle('section-pause-on',sectionPauseMode);
-  updateSectionEndPcts();
+  
 };
 loopBtn.onclick=()=>{
   if(!sectionPauseMode)return;
   loopMode=!loopMode;
   loopBtn.classList.toggle('dv-active',loopMode);
-  if(!loopMode)pendingLoopSeek=null;
+  sendSectionBreaks();
 };
 mirrorHBtn.onclick=()=>sendUpdate('mirroredH',!state.mirroredH);
 mirrorVBtn.onclick=()=>sendUpdate('mirroredV',!state.mirroredV);
@@ -977,7 +982,7 @@ speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value;sendUpdate('sc
 textArea.oninput=()=>{
   const v=textArea.value;setTimeout(()=>sendUpdate('text',v),250);
   getActiveScript().text=v;state.text=v;previewText.textContent=v;
-  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();updateReadTime();updateMarkerPcts();updateSectionEndPcts();
+  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();updateReadTime();updateMarkerPcts();sendSectionBreaks();
 };
 undoBtn.onclick=()=>{textArea.focus();document.execCommand('undo');};
 redoBtn.onclick=()=>{textArea.focus();document.execCommand('redo');};
@@ -997,18 +1002,18 @@ document.addEventListener('keydown',e=>{
 });
 
 // ── SECTION PAUSE / LOOP ─────────────────────────────────
-let sectionPauseMode=false,loopMode=false,pendingLoopSeek=null;
-let sectionEndPcts=[]; // [{pct, startPct}]
-function updateSectionEndPcts(){
-  if(!sectionPauseMode){sectionEndPcts=[];return;}
-  const secs=getParagraphs(state.text);
-  sectionEndPcts=secs.map(sec=>{
-    const last=sec.sentences[sec.sentences.length-1];
-    const pct=pausePct(last.offset+last.len);
-    const startPct=(()=>{try{return scrollPctFromChar(sec.sentences[0].offset);}catch(e){return 0;}})();
-    return{pct,startPct};
-  }).filter(e=>e.pct>=0&&e.pct<=1);
+// Sends section boundary offsets to prompter so IT handles detection accurately
+function sendSectionBreaks(){
+  if(!conn||!conn.open)return;
+  const breaks=sectionPauseMode?getParagraphs(state.text).map(sec=>({
+    endOffset:sec.sentences[sec.sentences.length-1].offset+sec.sentences[sec.sentences.length-1].len,
+    startOffset:sec.sentences[0].offset
+  })):[];
+  conn.send({type:'update',field:'sectionBreaks',value:breaks});
+  conn.send({type:'update',field:'loopMode',value:loopMode});
 }
+let sectionPauseMode=false,loopMode=false;
+
 
 // ── MARKERS ──────────────────────────────────────────────
 let markerPcts=[];
@@ -1018,8 +1023,8 @@ function viewportFraction(){
   return previewBox.clientHeight/max;
 }
 function pausePct(offset){
-  // Returns the scroll pct at which 'offset' char appears at BOTTOM of viewport
-  try{return Math.max(0,scrollPctFromChar(offset)-viewportFraction());}catch(e){return -1;}
+  // Pause when char is roughly 85% down the viewport (clearly visible, not at edge)
+  try{return Math.max(0,scrollPctFromChar(offset)-viewportFraction()*0.15);}catch(e){return -1;}
 }
 function updateMarkerPcts(){
   const markers=(getActiveScript().markers||[]).filter(o=>o<state.text.length);
@@ -1051,25 +1056,14 @@ function handleData(msg){
     const prevPct=scrollPct;
     scrollPct=msg.position;
     // Auto-pause at sentence markers
-    let didPause=false;
     if(state.playState==='playing'&&markerPcts.length){
       for(const mPct of markerPcts){
         if(prevPct<mPct&&scrollPct>=mPct){
-          sendUpdate('playState','paused');state.playState='paused';renderControls();
-          didPause=true;break;
+          sendUpdate('playState','paused');state.playState='paused';renderControls();break;
         }
       }
     }
-    // Auto-pause at section ends
-    if(!didPause&&state.playState==='playing'&&sectionPauseMode&&sectionEndPcts.length){
-      for(const{pct:ePct,startPct}of sectionEndPcts){
-        if(prevPct<ePct&&scrollPct>=ePct){
-          sendUpdate('playState','paused');state.playState='paused';
-          if(loopMode)pendingLoopSeek=startPct;
-          renderControls();break;
-        }
-      }
-    }
+
     if(!draggingPreview)correctPreview(scrollPct);renderHighlight();updateScrubber();
   }
   else if(msg.type==='viewport'){phone={w:msg.width,h:msg.height};updateMonitorScale();}
@@ -1097,7 +1091,7 @@ function enterMainPanel(){
   renderTabs();syncScript();textArea.value=state.text;
   sentenceStarts=buildSentenceStarts(state.text);
   updateMonitorScale();updateScrubber();checkRestore();
-  setTimeout(()=>{updateReadTime();updateMarkerPcts();updateSectionEndPcts();},120);
+  setTimeout(()=>{updateReadTime();updateMarkerPcts();},120);
   // Send current script to prompter now that the session is chosen
   if(conn&&conn.open){
     const payload={type:'state',data:{...state,text:getActiveScript().text}};
@@ -1157,7 +1151,7 @@ function startHost(){
       syncScript();
       const payload={type:'state',data:{...state,text:getActiveScript().text}};
       conn.send(payload);
-      setTimeout(()=>{if(conn&&conn.open)conn.send(payload);},400);
+      setTimeout(()=>{if(conn&&conn.open){conn.send(payload);sendSectionBreaks();}},400);
     });
     conn.on('data',handleData);
     conn.on('close',()=>{
