@@ -317,8 +317,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       </button>
       <div id="directorTools">
         <div class="tb-sep"></div>
-        <button class="tb-btn dv-ctrl" id="sectionPauseBtn" title="Auto-pause at end of each section">⏸ Sections</button>
-        <button class="tb-btn dv-ctrl" id="loopBtn" title="Loop section (replay from section start after pause)" disabled>↺ Loop</button>
+        <button class="tb-btn dv-ctrl" id="sectionPauseBtn" title="Auto-pause at end of each section">⏸</button>
+        <button class="tb-btn dv-ctrl" id="loopBtn" title="Loop section (replay from section start after pause)" disabled>↺</button>
       </div>
       <div class="tb-right">
         <button class="tb-btn" id="copyBtn">Copy</button>
@@ -628,18 +628,16 @@ function highlightDirector(){
     }
   });
   if(first){
-    cancelAnimationFrame(dvDebounce);
-    dvDebounce=requestAnimationFrame(()=>{
-      const dvRect=directorView.getBoundingClientRect();
-      const rRect=first.getBoundingClientRect();
-      const relBot=rRect.bottom-dvRect.top;
-      // Jump only when highlight is still within the viewport (relTop < dvH)
-      // AND its bottom passes the 75% mark — never fight upward scrolling
-      if(relBot > directorView.clientHeight * 0.75 && relTop < directorView.clientHeight){
-        const absTop = rRect.top - dvRect.top + directorView.scrollTop;
-        directorView.scrollTop = Math.max(0, absTop - 28);
-      }
-    });
+    // Run directly — no RAF debounce (previewTick calls this at 60fps and debounce cancels itself)
+    const dvRect=directorView.getBoundingClientRect();
+    const rRect=first.getBoundingClientRect();
+    const relTop=rRect.top-dvRect.top;
+    const relBot=rRect.bottom-dvRect.top;
+    const dvH=directorView.clientHeight;
+    // Jump when highlight nears bottom 25%; never fight user scrolling up (relTop < dvH guard)
+    if(relBot > dvH * 0.75 && relTop < dvH){
+      directorView.scrollTop=Math.max(0, relTop + directorView.scrollTop - 28);
+    }
   }
 }
 
