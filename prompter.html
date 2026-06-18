@@ -507,12 +507,14 @@
     try {
       const range = document.createRange();
       for (const endOff of sentenceMarkers) {
-        const off = Math.max(0, Math.min(endOff, len - 1));
+        // Scan backward past whitespace so we land on a visible character, not a newline
+        let off = Math.max(0, Math.min(endOff, len - 1));
+        while (off > 0 && /\s/.test(tn.textContent[off])) off--;
         range.setStart(tn, off);
         const rects = range.getClientRects();
         if (!rects.length) continue;
         const absY = rects[0].top - sRect.top + scrollArea.scrollTop;
-        sentenceMarkerYs.push(Math.max(0, absY - scrollArea.clientHeight * 0.75));
+        sentenceMarkerYs.push(Math.max(0, absY - scrollArea.clientHeight * 0.65));
       }
     } catch(e) {}
   }
@@ -527,16 +529,18 @@
     try {
       const range = document.createRange();
       for (const {endOffset, startOffset} of sectionBreaks) {
-        // Exact same collapsed-range pattern as computeSentenceMarkerYs (which works)
-        const endOff = Math.max(0, Math.min(endOffset, len - 1));
+        // Scan backward past whitespace — same pattern as sentence markers
+        let endOff = Math.max(0, Math.min(endOffset, len - 1));
+        while (endOff > 0 && /\s/.test(tn.textContent[endOff])) endOff--;
         range.setStart(tn, endOff);
         const rects = range.getClientRects();
         if (!rects.length) continue;
         const endAbsY = rects[0].top - sRect.top + scrollArea.scrollTop;
-        const pauseAt = Math.max(0, endAbsY - scrollArea.clientHeight * 0.75);
+        const pauseAt = Math.max(0, endAbsY - scrollArea.clientHeight * 0.65);
 
         // Section start Y for loop-back
-        const startOff = Math.max(0, Math.min(startOffset, len - 1));
+        let startOff = Math.max(0, Math.min(startOffset, len - 1));
+        while (startOff < len - 1 && /\s/.test(tn.textContent[startOff])) startOff++;
         range.setStart(tn, startOff);
         const sRects = range.getClientRects();
         const startAbsY = sRects.length ? sRects[0].top - sRect.top + scrollArea.scrollTop : 0;
@@ -772,6 +776,6 @@
     if (document.visibilityState === 'visible') requestWakeLock();
   });
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v25</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v26</div>
 </body>
 </html>
