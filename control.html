@@ -633,22 +633,18 @@ function highlightDirector(){
   } else {
     first=directorView.querySelector('mark.dv-hl')?.closest('.dv-sentence-row')||null;
   }
-  // Auto-scroll ONLY when the highlighted row changes (reading progressed).
-  // When the row is unchanged the user is scrolling manually, so we never touch scrollTop.
-  if(first && first!==_dvLastRow){
+  // Keep the highlighted row visible. Auto-scroll whenever it drifts toward either edge,
+  // whether reading progressed (downward) or the user scrolled the preview up.
+  if(first){
     _dvLastRow=first;
     const rRect=first.getBoundingClientRect();
     const relTop=rRect.top-dvRect.top;
     const relBot=rRect.bottom-dvRect.top;
     const dvH=directorView.clientHeight;
-    // Only reposition if the new highlighted row is outside the comfortable middle band
-    // (above 20% or below 75%). If it's already comfortably visible, leave the view as is.
+    // If the row leaves the comfortable band (top 20% / bottom 75%), recenter it ~1/3 down.
     if(relTop<dvH*0.2 || relBot>dvH*0.75){
-      // Place the row about 1/3 from the top — natural reading position
       directorView.scrollTop=Math.max(0, relTop+directorView.scrollTop-dvH*0.33);
     }
-  } else if(!first){
-    _dvLastRow=null;
   }
 }
 
@@ -1201,6 +1197,6 @@ setInterval(()=>{
   }
 },2000);
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v30</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v31</div>
 </body>
 </html>
