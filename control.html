@@ -633,17 +633,29 @@ function highlightDirector(){
   } else {
     first=directorView.querySelector('mark.dv-hl')?.closest('.dv-sentence-row')||null;
   }
-  // Keep the highlighted row visible. Auto-scroll whenever it drifts toward either edge,
-  // whether reading progressed (downward) or the user scrolled the preview up.
+  // Auto-scroll ONLY when the highlighted row itself changes (reading progressed).
+  // Same row = user is manually scrolling — don't interfere.
+  const dvRect=directorView.getBoundingClientRect();
   if(first){
-    _dvLastRow=first;
     const rRect=first.getBoundingClientRect();
     const relTop=rRect.top-dvRect.top;
     const relBot=rRect.bottom-dvRect.top;
     const dvH=directorView.clientHeight;
-    // If the row leaves the comfortable band (top 20% / bottom 75%), recenter it ~1/3 down.
-    if(relTop<dvH*0.2 || relBot>dvH*0.75){
-      directorView.scrollTop=Math.max(0, relTop+directorView.scrollTop-dvH*0.33);
+    if(first!==_dvLastRow){
+      _dvLastRow=first;
+      // New row highlighted (reading progressed)
+      if(relBot>dvH*0.75 || relTop>dvH || relBot<0){
+        // Downward page-turn or off-screen rescue: put near top
+        directorView.scrollTop=Math.max(0, relTop+directorView.scrollTop-28);
+      } else if(relTop>=0 && relTop<dvH*0.2){
+        // New row appeared in top 20%: put near bottom (80%)
+        directorView.scrollTop=Math.max(0, relTop+directorView.scrollTop-dvH*0.8+rRect.height/2);
+      }
+    } else {
+      // Same row (user scrolling) — upward trigger only: row drifting into top 20%
+      if(relBot>0 && relBot<dvH*0.2){
+        directorView.scrollTop=Math.max(0, relTop+directorView.scrollTop-dvH*0.8+rRect.height/2);
+      }
     }
   }
 }
@@ -1197,6 +1209,6 @@ setInterval(()=>{
   }
 },2000);
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v31</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v29</div>
 </body>
 </html>
