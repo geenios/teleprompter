@@ -63,7 +63,7 @@
 
   #textContent {
     color: var(--text); line-height: 1.5;
-    padding: 60vh 6vw 60vh 6vw;
+    padding: 60vh 6% 60vh 6%;
     white-space: pre-wrap; word-wrap: break-word;
     transform-origin: center;
   }
@@ -459,7 +459,7 @@
     textContent.textContent = state.text;
     textContent.style.fontSize = state.fontSize + 'px';
     textContent.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
-    const m = (state.margin != null ? state.margin : 6) + 'vw';
+    const m = (state.margin != null ? state.margin : 6) + '%';
     textContent.style.paddingLeft = m;
     textContent.style.paddingRight = m;
     const sx = state.mirroredH ? -1 : 1;
@@ -484,10 +484,14 @@
     if (conn && conn.open) conn.send({ type: 'state', data: state });
   }
 
+  let lastSentPct = null;
   function broadcastScroll() {
     if (conn && conn.open) {
       const max = scrollArea.scrollHeight - scrollArea.clientHeight;
       const pct = max > 0 ? Math.min(1, Math.max(0, scrollPosition / max)) : 0;
+      // Skip redundant identical positions (e.g. while paused/idle)
+      if (lastSentPct !== null && Math.abs(pct - lastSentPct) < 0.00005) return;
+      lastSentPct = pct;
       conn.send({ type: 'scroll', position: pct });
     }
   }
@@ -627,8 +631,8 @@
   }
   requestAnimationFrame(tick);
 
-  // Broadcast scroll every 150ms
-  setInterval(broadcastScroll, 150);
+  // Broadcast scroll ~30×/sec for a smooth preview (guarded against redundant sends)
+  setInterval(broadcastScroll, 33);
 
   // ---- Toolbar show/hide (tap scroll area) ----
   let toolbarTimer = null;
