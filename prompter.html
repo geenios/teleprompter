@@ -286,10 +286,13 @@
     mono:     { stack: "'Courier New', monospace" }
   };
 
+  // ---- Speed (WPM) range ----
+  const WPM_MIN = 40, WPM_MAX = 250;
+
   // ---- State ----
   let state = {
     text: '', fontSize: 48, fontFamily: 'opensans',
-    scrollSpeed: 50, mirroredH: false, mirroredV: false, playState: 'paused'
+    wpm: 130, margin: 6, mirroredH: false, mirroredV: false, playState: 'paused'
   };
   let conn = null;
   let peer = null;
@@ -335,14 +338,28 @@
     clearInterval(scrollInterval); scrollInterval = null;
   }
 
+  // ---- WPM → pixels/sec conversion ----
+  // pxPerWord depends on this device's own layout (font, width, margins),
+  // so the same WPM scrolls at the right rate regardless of screen.
+  let pxPerWord = 0;
+  function computePxPerWord() {
+    const words = (state.text.trim().match(/\S+/g) || []).length;
+    if (!words) { pxPerWord = 0; return; }
+    const cs = getComputedStyle(textContent);
+    const padTop = parseFloat(cs.paddingTop) || 0;
+    const padBot = parseFloat(cs.paddingBottom) || 0;
+    const textH = Math.max(0, scrollArea.scrollHeight - padTop - padBot);
+    pxPerWord = textH / words;
+  }
+
   // ---- Speed change ----
   let speedInterval = null;
 
   function startSpeedChange(delta) {
     clearInterval(speedInterval);
     speedInterval = setInterval(() => {
-      const v = Math.max(0, Math.min(400, state.scrollSpeed + delta));
-      if (v !== state.scrollSpeed) { updateState({ scrollSpeed: v }); }
+      const v = Math.max(WPM_MIN, Math.min(WPM_MAX, state.wpm + delta));
+      if (v !== state.wpm) { updateState({ wpm: v }); }
     }, 50);
   }
   function stopSpeedChange() {
@@ -442,6 +459,9 @@
     textContent.textContent = state.text;
     textContent.style.fontSize = state.fontSize + 'px';
     textContent.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
+    const m = (state.margin != null ? state.margin : 6) + 'vw';
+    textContent.style.paddingLeft = m;
+    textContent.style.paddingRight = m;
     const sx = state.mirroredH ? -1 : 1;
     const sy = state.mirroredV ? -1 : 1;
     textContent.style.transform = `scale(${sx},${sy})`;
@@ -457,7 +477,7 @@
     mirrorHBtn.classList.toggle('active', state.mirroredH);
     mirrorVBtn.classList.toggle('active', state.mirroredV);
     if (fontSizeVal) fontSizeVal.textContent = state.fontSize;
-    if (speedVal) speedVal.textContent = state.scrollSpeed;
+    if (speedVal) speedVal.textContent = state.wpm;
   }
 
   function broadcastState() {
@@ -558,7 +578,8 @@
     requestAnimationFrame(() => {
       const newMax = scrollArea.scrollHeight - scrollArea.clientHeight;
       setScroll(pct * newMax);
-      if ('text' in partial || 'fontSize' in partial || 'fontFamily' in partial) {
+      if ('text' in partial || 'fontSize' in partial || 'fontFamily' in partial || 'margin' in partial) {
+        computePxPerWord();
         computeSectionBreakYs();
         computeSentenceMarkerYs();
       }
@@ -574,7 +595,8 @@
     if (state.playState === 'playing') {
       if (lastTime !== null) {
         const max = scrollArea.scrollHeight - scrollArea.clientHeight;
-        const next = scrollPosition + state.scrollSpeed * (ts - lastTime) / 1000;
+        const pxPerSec = pxPerWord > 0 ? state.wpm / 60 * pxPerWord : 0;
+        const next = scrollPosition + pxPerSec * (ts - lastTime) / 1000;
         // Check sentence marker pause points
         for (const pauseAt of sentenceMarkerYs) {
           if (scrollPosition < pauseAt && next >= pauseAt) {
@@ -640,8 +662,8 @@
   mirrorVBtn.onclick = () => updateState({ mirroredV: !state.mirroredV });
   fontIncBtn.onclick = () => updateState({ fontSize: Math.min(200, state.fontSize + 4) });
   fontDecBtn.onclick = () => updateState({ fontSize: Math.max(20, state.fontSize - 4) });
-  speedIncBtn.onclick = () => updateState({ scrollSpeed: Math.min(400, state.scrollSpeed + 10) });
-  speedDecBtn.onclick = () => updateState({ scrollSpeed: Math.max(0, state.scrollSpeed - 10) });
+  speedIncBtn.onclick = () => updateState({ wpm: Math.min(WPM_MAX, state.wpm + 5) });
+  speedDecBtn.onclick = () => updateState({ wpm: Math.max(WPM_MIN, state.wpm - 5) });
 
   // ---- Remote messages ----
   function handleRemote(msg) {

@@ -363,11 +363,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       </div>
     </div>
     <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Scroll speed</span><span class="val" id="speedValue">50</span></div>
+      <div class="ctrl-row"><span class="label">Speed</span><span class="val" id="speedValue">130 wpm</span></div>
       <div class="slider-btns">
         <button class="step-btn" id="speedDecBtn">−</button>
-        <input type="range" id="speedSlider" min="0" max="400" step="1">
+        <input type="range" id="speedSlider" min="40" max="250" step="1">
         <button class="step-btn" id="speedIncBtn">+</button>
+      </div>
+    </div>
+    <div class="slider-row">
+      <div class="ctrl-row"><span class="label">Side margins</span><span class="val" id="marginValue">6</span></div>
+      <div class="slider-btns">
+        <button class="step-btn" id="marginDecBtn">−</button>
+        <input type="range" id="marginSlider" min="0" max="25" step="1">
+        <button class="step-btn" id="marginIncBtn">+</button>
       </div>
     </div>
     <div class="slider-row">
@@ -410,7 +418,7 @@ DIRECTOR MODE
 See your script as individual sentences. Click any sentence to jump the prompter there. The yellow highlight tracks what is visible. Hover a sentence to reveal + Add note on the right. Notes are saved with the session and included in exports. Check the box next to a section's first sentence to mark it as done.
 
 CONTROLS (right panel)
-Play / Pause, Restart, Flip H / V. Font size and scroll speed sliders. Press Space to play/pause. Arrow keys jump between sentences when the script editor is not focused.
+Play / Pause, Restart, Flip H / V. Font size, speed (in words per minute) and side-margin sliders. Speed adjusts in 1 WPM steps; the read-time estimate updates with it. Press Space to play/pause. Arrow keys jump between sentences when the script editor is not focused.
 
 BLUETOOTH REMOTE (phone)
 Tap ⚙ on the prompter to customise shortcuts. Defaults: 1 or G = play/pause, F = speed up, V = speed down, hold arrows = continuous scroll, T = jump to top.
@@ -441,6 +449,9 @@ const fontSizeSlider=$('fontSizeSlider'), fontSizeValue=$('fontSizeValue');
 const fontIncBtn=$('fontIncBtn'), fontDecBtn=$('fontDecBtn');
 const speedSlider=$('speedSlider'), speedValue=$('speedValue');
 const speedIncBtn=$('speedIncBtn'), speedDecBtn=$('speedDecBtn');
+const marginSlider=$('marginSlider'), marginValue=$('marginValue');
+const marginIncBtn=$('marginIncBtn'), marginDecBtn=$('marginDecBtn');
+const WPM_MIN=40, WPM_MAX=250, MARGIN_MIN=0, MARGIN_MAX=25;
 const fontFamilySelect=$('fontFamilySelect'), sideStatus=$('sideStatus'), connDot=$('connDot'), readTimeEl=$('readTimeEl');
 
 Object.entries(FONTS).forEach(([k,f])=>{
@@ -470,7 +481,7 @@ function autosave(){
 let session=(()=>{try{const r=localStorage.getItem(SESSION_KEY);if(r){const s=JSON.parse(r);if(s&&s.scripts)return s;}}catch(e){}return defaultSession(true);})();
 
 // ── PROMPTER STATE ────────────────────────────────────────
-let state={text:'',fontSize:75,fontFamily:'opensans',scrollSpeed:170,mirroredH:false,mirroredV:false,playState:'paused'};
+let state={text:'',fontSize:75,fontFamily:'opensans',wpm:130,margin:6,mirroredH:false,mirroredV:false,playState:'paused'};
 function syncScript(){state.text=getActiveScript().text;}
 syncScript();
 
@@ -813,8 +824,11 @@ function renderControls(){
   if(document.activeElement!==textArea)textArea.value=state.text;
   if(document.activeElement!==fontSizeSlider)fontSizeSlider.value=state.fontSize;
   fontSizeValue.textContent=state.fontSize;
-  if(document.activeElement!==speedSlider)speedSlider.value=state.scrollSpeed;
-  speedValue.textContent=state.scrollSpeed;
+  if(document.activeElement!==speedSlider)speedSlider.value=state.wpm;
+  speedValue.textContent=state.wpm+' wpm';
+  const mg=state.margin!=null?state.margin:6;
+  if(document.activeElement!==marginSlider)marginSlider.value=mg;
+  marginValue.textContent=mg;
   if(document.activeElement!==fontFamilySelect)fontFamilySelect.value=state.fontFamily;
   fontFamilySelect.style.fontFamily=(FONTS[state.fontFamily]||FONTS.opensans).stack;
   mirrorHBtn.classList.toggle('active',state.mirroredH);
@@ -823,6 +837,8 @@ function renderControls(){
   playBtn.classList.toggle('active',state.playState==='playing');
   previewText.textContent=state.text;
   previewText.style.fontFamily=(FONTS[state.fontFamily]||FONTS.opensans).stack;
+  previewText.style.paddingLeft=mg+'cqw';
+  previewText.style.paddingRight=mg+'cqw';
   updateMonitorScale();renderHighlight();updateScrubber();
 }
 
@@ -840,7 +856,7 @@ dragHandle.addEventListener('pointermove',e=>{
 dragHandle.addEventListener('pointerup',()=>{draggingH=false;dragHandle.classList.remove('dragging');});
 
 // ── PREVIEW & SCROLL ──────────────────────────────────────
-let scrollPct=0,phone={w:390,h:844},previewScale=1;
+let scrollPct=0,phone={w:390,h:844},previewScale=1,previewPxPerWord=0;
 let previewPos=0,prevLast=null,draggingPreview=false,draggingScrubber=false,dragScrubOff=0;
 let peer=null,conn=null,peerCode=generateCode();
 
@@ -853,6 +869,16 @@ function updateMonitorScale(){
   monitor.style.width=w+'px';monitor.style.height=h+'px';
   previewScale=phone.w>0?w/phone.w:1;
   previewText.style.fontSize=(state.fontSize*previewScale)+'px';
+  computePreviewPxPerWord();
+}
+// Preview's own pixels-per-word — used only for the disconnected fallback scroll.
+function computePreviewPxPerWord(){
+  const words=(state.text.trim().match(/\S+/g)||[]).length;
+  if(!words){previewPxPerWord=0;return;}
+  const cs=getComputedStyle(previewText);
+  const padTop=parseFloat(cs.paddingTop)||0,padBot=parseFloat(cs.paddingBottom)||0;
+  const textH=Math.max(0,previewText.scrollHeight-padTop-padBot);
+  previewPxPerWord=textH/words;
 }
 // When prompter sends scroll updates, track the last sync time.
 // previewTick only scrolls independently when no recent sync (e.g. disconnected).
@@ -862,7 +888,7 @@ function previewTick(ts){
     const sinceSync=Date.now()-lastSyncTime;
     if(sinceSync>300){
       // No prompter sync recently — scroll independently as fallback
-      if(prevLast!==null){const dt=(ts-prevLast)/1000;const max=Math.max(0,previewText.scrollHeight-previewBox.clientHeight);previewPos=Math.max(0,Math.min(previewPos+state.scrollSpeed*previewScale*dt,max));previewBox.scrollTop=previewPos;}
+      if(prevLast!==null){const dt=(ts-prevLast)/1000;const max=Math.max(0,previewText.scrollHeight-previewBox.clientHeight);const pxs=previewPxPerWord>0?state.wpm/60*previewPxPerWord:0;previewPos=Math.max(0,Math.min(previewPos+pxs*dt,max));previewBox.scrollTop=previewPos;}
     }
     prevLast=ts;
   }else{prevLast=null;}
@@ -998,15 +1024,18 @@ mirrorHBtn.onclick=()=>sendUpdate('mirroredH',!state.mirroredH);
 mirrorVBtn.onclick=()=>sendUpdate('mirroredV',!state.mirroredV);
 fontFamilySelect.onchange=()=>sendUpdate('fontFamily',fontFamilySelect.value);
 const sf=d=>{const v=Math.max(20,Math.min(200,+fontSizeSlider.value+d));fontSizeSlider.value=v;fontSizeValue.textContent=v+'px';sendUpdate('fontSize',v);};
-const ss=d=>{const v=Math.max(0,Math.min(400,+speedSlider.value+d));speedSlider.value=v;speedValue.textContent=v;sendUpdate('scrollSpeed',v);};
+const ss=d=>{const v=Math.max(WPM_MIN,Math.min(WPM_MAX,+speedSlider.value+d));speedSlider.value=v;speedValue.textContent=v+' wpm';state.wpm=v;sendUpdate('wpm',v);updateReadTime();};
+const sm=d=>{const v=Math.max(MARGIN_MIN,Math.min(MARGIN_MAX,+marginSlider.value+d));marginSlider.value=v;marginValue.textContent=v;state.margin=v;previewText.style.paddingLeft=v+'cqw';previewText.style.paddingRight=v+'cqw';sendUpdate('margin',v);computePreviewPxPerWord();};
 fontIncBtn.onclick=()=>sf(2);fontDecBtn.onclick=()=>sf(-2);
-speedIncBtn.onclick=()=>ss(5);speedDecBtn.onclick=()=>ss(-5);
+speedIncBtn.onclick=()=>ss(1);speedDecBtn.onclick=()=>ss(-1);
+marginIncBtn.onclick=()=>sm(1);marginDecBtn.onclick=()=>sm(-1);
 fontSizeSlider.oninput=()=>{fontSizeValue.textContent=fontSizeSlider.value+'px';sendUpdate('fontSize',+fontSizeSlider.value);};
-speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value;sendUpdate('scrollSpeed',+speedSlider.value);};
+speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value+' wpm';state.wpm=+speedSlider.value;sendUpdate('wpm',+speedSlider.value);updateReadTime();};
+marginSlider.oninput=()=>{const v=+marginSlider.value;marginValue.textContent=v;state.margin=v;previewText.style.paddingLeft=v+'cqw';previewText.style.paddingRight=v+'cqw';sendUpdate('margin',v);computePreviewPxPerWord();};
 textArea.oninput=()=>{
   const v=textArea.value;setTimeout(()=>sendUpdate('text',v),250);
   getActiveScript().text=v;state.text=v;previewText.textContent=v;
-  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();updateReadTime();sendSectionBreaks();sendSentenceMarkers();
+  sentenceStarts=buildSentenceStarts(v);renderHighlight();autosave();updateReadTime();computePreviewPxPerWord();sendSectionBreaks();sendSentenceMarkers();
 };
 undoBtn.onclick=()=>{textArea.focus();document.execCommand('undo');};
 redoBtn.onclick=()=>{textArea.focus();document.execCommand('redo');};
@@ -1056,17 +1085,13 @@ function updateReadTime(){
   if(!readTimeEl)return;
   const words=state.text.trim().split(/\s+/).filter(Boolean).length;
   if(!words){readTimeEl.textContent='';return;}
-  requestAnimationFrame(()=>{
-    const scrollH=Math.max(0,previewText.scrollHeight-previewBox.clientHeight);
-    const actualH=previewScale>0?scrollH/previewScale:scrollH;
-    const secs=state.scrollSpeed>0&&actualH>0?Math.round(actualH/state.scrollSpeed):0;
-    if(secs>0){
-      const m=Math.floor(secs/60),s=secs%60;
-      readTimeEl.textContent=words+'w · ~'+m+':'+s.toString().padStart(2,'0');
-    }else{
-      readTimeEl.textContent=words+'w';
-    }
-  });
+  const secs=state.wpm>0?Math.round(words/state.wpm*60):0;
+  if(secs>0){
+    const m=Math.floor(secs/60),s=secs%60;
+    readTimeEl.textContent=words+'w · ~'+m+':'+s.toString().padStart(2,'0');
+  }else{
+    readTimeEl.textContent=words+'w';
+  }
 }
 
 // ── INCOMING ──────────────────────────────────────────────
