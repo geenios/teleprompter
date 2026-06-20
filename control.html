@@ -208,6 +208,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .slider-btns input{flex:1;accent-color:var(--accent);}
 .step-btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:6px;width:30px;height:30px;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;user-select:none;}
 .step-btn:active{border-color:var(--accent);color:var(--accent);}
+.margin-dual{position:relative;height:28px;margin-top:2px;touch-action:none;}
+.md-track{position:absolute;top:50%;left:0;right:0;height:6px;transform:translateY(-50%);background:var(--panel-2);border:1px solid var(--border);border-radius:3px;}
+.md-fill{position:absolute;top:50%;height:6px;transform:translateY(-50%);background:rgba(255,200,0,.28);border-radius:3px;pointer-events:none;}
+.md-thumb{position:absolute;top:50%;width:16px;height:16px;transform:translate(-50%,-50%);background:var(--accent);border:2px solid var(--bg);border-radius:50%;cursor:grab;}
+.md-thumb:active{cursor:grabbing;}
 .select-input{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:14px;outline:none;width:100%;}
 .select-input:focus{border-color:var(--accent);}
 #statusBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -371,11 +376,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       </div>
     </div>
     <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Side margins</span><span class="val" id="marginValue">6</span></div>
-      <div class="slider-btns">
-        <button class="step-btn" id="marginDecBtn">−</button>
-        <input type="range" id="marginSlider" min="0" max="25" step="1">
-        <button class="step-btn" id="marginIncBtn">+</button>
+      <div class="ctrl-row"><span class="label">Side margins</span><span class="val" id="marginValue">L 6 · R 6</span></div>
+      <div id="marginDual" class="margin-dual">
+        <div class="md-track"></div>
+        <div class="md-fill" id="mdFill"></div>
+        <div class="md-thumb" id="mdThumbL" title="Left margin"></div>
+        <div class="md-thumb" id="mdThumbR" title="Right margin"></div>
       </div>
     </div>
     <div class="slider-row">
@@ -449,9 +455,9 @@ const fontSizeSlider=$('fontSizeSlider'), fontSizeValue=$('fontSizeValue');
 const fontIncBtn=$('fontIncBtn'), fontDecBtn=$('fontDecBtn');
 const speedSlider=$('speedSlider'), speedValue=$('speedValue');
 const speedIncBtn=$('speedIncBtn'), speedDecBtn=$('speedDecBtn');
-const marginSlider=$('marginSlider'), marginValue=$('marginValue');
-const marginIncBtn=$('marginIncBtn'), marginDecBtn=$('marginDecBtn');
-const WPM_MIN=40, WPM_MAX=250, MARGIN_MIN=0, MARGIN_MAX=25;
+const marginValue=$('marginValue');
+const marginDual=$('marginDual'), mdFill=$('mdFill'), mdThumbL=$('mdThumbL'), mdThumbR=$('mdThumbR');
+const WPM_MIN=40, WPM_MAX=250, MARGIN_MIN=0, MARGIN_MAX=20;
 const fontFamilySelect=$('fontFamilySelect'), sideStatus=$('sideStatus'), connDot=$('connDot'), readTimeEl=$('readTimeEl');
 
 Object.entries(FONTS).forEach(([k,f])=>{
@@ -481,7 +487,7 @@ function autosave(){
 let session=(()=>{try{const r=localStorage.getItem(SESSION_KEY);if(r){const s=JSON.parse(r);if(s&&s.scripts)return s;}}catch(e){}return defaultSession(true);})();
 
 // ── PROMPTER STATE ────────────────────────────────────────
-let state={text:'',fontSize:75,fontFamily:'opensans',wpm:130,margin:6,mirroredH:false,mirroredV:false,playState:'paused'};
+let state={text:'',fontSize:75,fontFamily:'opensans',wpm:130,marginL:6,marginR:6,mirroredH:false,mirroredV:false,playState:'paused'};
 function syncScript(){state.text=getActiveScript().text;}
 syncScript();
 
@@ -826,9 +832,8 @@ function renderControls(){
   fontSizeValue.textContent=state.fontSize;
   if(document.activeElement!==speedSlider)speedSlider.value=state.wpm;
   speedValue.textContent=state.wpm+' wpm';
-  const mg=state.margin!=null?state.margin:6;
-  if(document.activeElement!==marginSlider)marginSlider.value=mg;
-  marginValue.textContent=mg;
+  const mgL=state.marginL!=null?state.marginL:6, mgR=state.marginR!=null?state.marginR:6;
+  updateMarginUI(mgL,mgR);
   if(document.activeElement!==fontFamilySelect)fontFamilySelect.value=state.fontFamily;
   fontFamilySelect.style.fontFamily=(FONTS[state.fontFamily]||FONTS.opensans).stack;
   mirrorHBtn.classList.toggle('active',state.mirroredH);
@@ -837,8 +842,8 @@ function renderControls(){
   playBtn.classList.toggle('active',state.playState==='playing');
   previewText.textContent=state.text;
   previewText.style.fontFamily=(FONTS[state.fontFamily]||FONTS.opensans).stack;
-  previewText.style.paddingLeft=mg+'%';
-  previewText.style.paddingRight=mg+'%';
+  previewText.style.paddingLeft=mgL+'%';
+  previewText.style.paddingRight=mgR+'%';
   updateMonitorScale();renderHighlight();updateScrubber();
 }
 
@@ -856,7 +861,7 @@ dragHandle.addEventListener('pointermove',e=>{
 dragHandle.addEventListener('pointerup',()=>{draggingH=false;dragHandle.classList.remove('dragging');});
 
 // ── PREVIEW & SCROLL ──────────────────────────────────────
-let scrollPct=0,phone={w:390,h:844},previewScale=1,previewPxPerWord=0;
+let scrollPct=0,phone={w:390,h:844},previewScale=1,previewPxPerWord=0,phonePadY=0.6*844;
 let previewPos=0,prevLast=null,draggingPreview=false,draggingScrubber=false,dragScrubOff=0;
 let peer=null,conn=null,peerCode=generateCode();
 
@@ -869,6 +874,10 @@ function updateMonitorScale(){
   monitor.style.width=w+'px';monitor.style.height=h+'px';
   previewScale=phone.w>0?w/phone.w:1;
   previewText.style.fontSize=(state.fontSize*previewScale)+'px';
+  // Mirror the prompter's vertical lead-in (60vh on the phone) at scale,
+  // instead of the preview's own container-relative padding.
+  previewText.style.paddingTop=(phonePadY*previewScale)+'px';
+  previewText.style.paddingBottom=(phonePadY*previewScale)+'px';
   computePreviewPxPerWord();
 }
 // Preview's own pixels-per-word — used only for the disconnected fallback scroll.
@@ -1025,13 +1034,42 @@ mirrorVBtn.onclick=()=>sendUpdate('mirroredV',!state.mirroredV);
 fontFamilySelect.onchange=()=>sendUpdate('fontFamily',fontFamilySelect.value);
 const sf=d=>{const v=Math.max(20,Math.min(200,+fontSizeSlider.value+d));fontSizeSlider.value=v;fontSizeValue.textContent=v+'px';sendUpdate('fontSize',v);};
 const ss=d=>{const v=Math.max(WPM_MIN,Math.min(WPM_MAX,+speedSlider.value+d));speedSlider.value=v;speedValue.textContent=v+' wpm';state.wpm=v;sendUpdate('wpm',v);updateReadTime();};
-const sm=d=>{const v=Math.max(MARGIN_MIN,Math.min(MARGIN_MAX,+marginSlider.value+d));marginSlider.value=v;marginValue.textContent=v;state.margin=v;previewText.style.paddingLeft=v+'%';previewText.style.paddingRight=v+'%';sendUpdate('margin',v);computePreviewPxPerWord();};
 fontIncBtn.onclick=()=>sf(2);fontDecBtn.onclick=()=>sf(-2);
 speedIncBtn.onclick=()=>ss(1);speedDecBtn.onclick=()=>ss(-1);
-marginIncBtn.onclick=()=>sm(1);marginDecBtn.onclick=()=>sm(-1);
 fontSizeSlider.oninput=()=>{fontSizeValue.textContent=fontSizeSlider.value+'px';sendUpdate('fontSize',+fontSizeSlider.value);};
 speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value+' wpm';state.wpm=+speedSlider.value;sendUpdate('wpm',+speedSlider.value);updateReadTime();};
-marginSlider.oninput=()=>{const v=+marginSlider.value;marginValue.textContent=v;state.margin=v;previewText.style.paddingLeft=v+'%';previewText.style.paddingRight=v+'%';sendUpdate('margin',v);computePreviewPxPerWord();};
+
+// ── DUAL MARGIN SLIDER (left & right, each 0–20%) ──
+function updateMarginUI(l,r){
+  marginValue.textContent='L '+l+' · R '+r;
+  const w=marginDual.clientWidth||1;
+  const lx=(l/100)*w, rx=w-(r/100)*w;
+  mdThumbL.style.left=lx+'px';
+  mdThumbR.style.left=rx+'px';
+  mdFill.style.left=lx+'px';
+  mdFill.style.width=Math.max(0,rx-lx)+'px';
+}
+let mdDrag=null;
+function mdApply(side,v){
+  v=Math.max(MARGIN_MIN,Math.min(MARGIN_MAX,Math.round(v)));
+  if(side==='L'){state.marginL=v;previewText.style.paddingLeft=v+'%';sendUpdate('marginL',v);}
+  else{state.marginR=v;previewText.style.paddingRight=v+'%';sendUpdate('marginR',v);}
+  updateMarginUI(state.marginL,state.marginR);computePreviewPxPerWord();
+}
+function mdMove(e){
+  if(!mdDrag)return;
+  const rect=marginDual.getBoundingClientRect();const w=rect.width||1;
+  const x=Math.max(0,Math.min(e.clientX-rect.left,w));
+  if(mdDrag==='L')mdApply('L',(x/w)*100);
+  else mdApply('R',((w-x)/w)*100);
+}
+mdThumbL.addEventListener('pointerdown',e=>{e.preventDefault();mdDrag='L';mdThumbL.setPointerCapture(e.pointerId);});
+mdThumbR.addEventListener('pointerdown',e=>{e.preventDefault();mdDrag='R';mdThumbR.setPointerCapture(e.pointerId);});
+mdThumbL.addEventListener('pointermove',mdMove);
+mdThumbR.addEventListener('pointermove',mdMove);
+const mdEnd=()=>{mdDrag=null;};
+mdThumbL.addEventListener('pointerup',mdEnd);mdThumbR.addEventListener('pointerup',mdEnd);
+mdThumbL.addEventListener('pointercancel',mdEnd);mdThumbR.addEventListener('pointercancel',mdEnd);
 textArea.oninput=()=>{
   const v=textArea.value;setTimeout(()=>sendUpdate('text',v),250);
   getActiveScript().text=v;state.text=v;previewText.textContent=v;
@@ -1104,9 +1142,9 @@ function handleData(msg){
 
     if(!draggingPreview)correctPreview(scrollPct);renderHighlight();updateScrubber();
   }
-  else if(msg.type==='viewport'){phone={w:msg.width,h:msg.height};updateMonitorScale();}
+  else if(msg.type==='viewport'){phone={w:msg.width,h:msg.height};if(msg.padY!=null)phonePadY=msg.padY;updateMonitorScale();}
 }
-window.addEventListener('resize',()=>{updateMonitorScale();updateScrubber();});
+window.addEventListener('resize',()=>{updateMonitorScale();updateScrubber();updateMarginUI(state.marginL,state.marginR);});
 
 // ── QR MODAL ──────────────────────────────────────────────
 function buildPrompterUrl(c){const dir=window.location.pathname.replace(/\/[^/]*$/,'/');return window.location.origin+dir+'prompter.html?code='+c;}
@@ -1128,7 +1166,7 @@ function enterMainPanel(){
   persistentCode.textContent=peerCode;
   renderTabs();syncScript();textArea.value=state.text;
   sentenceStarts=buildSentenceStarts(state.text);
-  updateMonitorScale();updateScrubber();checkRestore();
+  updateMonitorScale();updateScrubber();updateMarginUI(state.marginL,state.marginR);checkRestore();
   setTimeout(()=>{updateReadTime();sendSectionBreaks();sendSentenceMarkers();},120);
   // Send current script to prompter now that the session is chosen
   if(conn&&conn.open){

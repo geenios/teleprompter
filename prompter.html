@@ -292,7 +292,7 @@
   // ---- State ----
   let state = {
     text: '', fontSize: 48, fontFamily: 'opensans',
-    wpm: 130, margin: 6, mirroredH: false, mirroredV: false, playState: 'paused'
+    wpm: 130, marginL: 6, marginR: 6, mirroredH: false, mirroredV: false, playState: 'paused'
   };
   let conn = null;
   let peer = null;
@@ -444,8 +444,15 @@
   // ---- Viewport reporting (uses visualViewport for accuracy) ----
   function reportViewport() {
     if (conn && conn.open) {
-      const vp = window.visualViewport || window;
-      conn.send({ type: 'viewport', width: vp.width, height: vp.height });
+      // Report the REAL text area (inside safe-area insets) plus the vertical
+      // lead-in padding, so the control preview can mirror it pixel-for-pixel.
+      const cs = getComputedStyle(textContent);
+      conn.send({
+        type: 'viewport',
+        width: scrollArea.clientWidth,
+        height: scrollArea.clientHeight,
+        padY: parseFloat(cs.paddingTop) || 0
+      });
     }
   }
   if (window.visualViewport) {
@@ -459,9 +466,8 @@
     textContent.textContent = state.text;
     textContent.style.fontSize = state.fontSize + 'px';
     textContent.style.fontFamily = (FONTS[state.fontFamily] || FONTS.opensans).stack;
-    const m = (state.margin != null ? state.margin : 6) + '%';
-    textContent.style.paddingLeft = m;
-    textContent.style.paddingRight = m;
+    textContent.style.paddingLeft = (state.marginL != null ? state.marginL : 6) + '%';
+    textContent.style.paddingRight = (state.marginR != null ? state.marginR : 6) + '%';
     const sx = state.mirroredH ? -1 : 1;
     const sy = state.mirroredV ? -1 : 1;
     textContent.style.transform = `scale(${sx},${sy})`;
@@ -582,7 +588,7 @@
     requestAnimationFrame(() => {
       const newMax = scrollArea.scrollHeight - scrollArea.clientHeight;
       setScroll(pct * newMax);
-      if ('text' in partial || 'fontSize' in partial || 'fontFamily' in partial || 'margin' in partial) {
+      if ('text' in partial || 'fontSize' in partial || 'fontFamily' in partial || 'marginL' in partial || 'marginR' in partial) {
         computePxPerWord();
         computeSectionBreakYs();
         computeSentenceMarkerYs();
