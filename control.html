@@ -360,6 +360,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       </button>
     </div>
     <div class="slider-row">
+      <div class="ctrl-row"><span class="label">Speed</span><span class="val" id="speedValue">130 wpm</span></div>
+      <div class="slider-btns">
+        <button class="step-btn" id="speedDecBtn">−</button>
+        <input type="range" id="speedSlider" min="40" max="250" step="1">
+        <button class="step-btn" id="speedIncBtn">+</button>
+      </div>
+    </div>
+    <div class="slider-row">
       <div class="ctrl-row"><span class="label">Font size</span><span class="val" id="fontSizeValue">75</span></div>
       <div class="slider-btns">
         <button class="step-btn" id="fontDecBtn">−</button>
@@ -368,11 +376,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       </div>
     </div>
     <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Speed</span><span class="val" id="speedValue">130 wpm</span></div>
+      <div class="ctrl-row"><span class="label">Line spacing</span><span class="val" id="lineHeightValue">1.5</span></div>
       <div class="slider-btns">
-        <button class="step-btn" id="speedDecBtn">−</button>
-        <input type="range" id="speedSlider" min="40" max="250" step="1">
-        <button class="step-btn" id="speedIncBtn">+</button>
+        <button class="step-btn" id="lineHeightDecBtn">−</button>
+        <input type="range" id="lineHeightSlider" min="1" max="2.5" step="0.1">
+        <button class="step-btn" id="lineHeightIncBtn">+</button>
       </div>
     </div>
     <div class="slider-row">
@@ -455,6 +463,8 @@ const fontSizeSlider=$('fontSizeSlider'), fontSizeValue=$('fontSizeValue');
 const fontIncBtn=$('fontIncBtn'), fontDecBtn=$('fontDecBtn');
 const speedSlider=$('speedSlider'), speedValue=$('speedValue');
 const speedIncBtn=$('speedIncBtn'), speedDecBtn=$('speedDecBtn');
+const lineHeightSlider=$('lineHeightSlider'), lineHeightValue=$('lineHeightValue');
+const lineHeightIncBtn=$('lineHeightIncBtn'), lineHeightDecBtn=$('lineHeightDecBtn');
 const marginValue=$('marginValue');
 const marginDual=$('marginDual'), mdFill=$('mdFill'), mdThumbL=$('mdThumbL'), mdThumbR=$('mdThumbR');
 const WPM_MIN=40, WPM_MAX=250, MARGIN_MIN=0, MARGIN_MAX=20;
@@ -487,7 +497,7 @@ function autosave(){
 let session=(()=>{try{const r=localStorage.getItem(SESSION_KEY);if(r){const s=JSON.parse(r);if(s&&s.scripts)return s;}}catch(e){}return defaultSession(true);})();
 
 // ── PROMPTER STATE ────────────────────────────────────────
-let state={text:'',fontSize:75,fontFamily:'opensans',wpm:130,marginL:6,marginR:6,mirroredH:false,mirroredV:false,playState:'paused'};
+let state={text:'',fontSize:75,fontFamily:'opensans',wpm:130,marginL:6,marginR:6,lineHeight:1.5,mirroredH:false,mirroredV:false,playState:'paused'};
 function syncScript(){state.text=getActiveScript().text;}
 syncScript();
 
@@ -534,7 +544,7 @@ function jumpToSentence(idx){
   idx=Math.max(0,Math.min(idx,sentenceStarts.length-1));
   sentenceIdx=idx;
   const total=state.text.length||1;
-  const pct=scrollPctFromChar(sentenceStarts[idx]);
+  const pct=lineSeekPct(sentenceStarts[idx]);
   scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
   textArea.scrollTop=(sentenceStarts[idx]/total)*textArea.scrollHeight;
   highlightLayer.scrollTop=textArea.scrollTop;
@@ -571,7 +581,7 @@ function renderDirectorView(){
       const textEl=document.createElement('span');
       textEl.className='dv-sent-text';textEl.textContent=sent.text;
       textEl.onclick=()=>{
-        const pct=scrollPctFromChar(sent.offset);
+        const pct=lineSeekPct(sent.offset);
         scrollPct=pct;sendUpdate('seek',pct);correctPreview(pct);renderHighlight();updateScrubber();
       };
       row.appendChild(textEl);
@@ -832,6 +842,9 @@ function renderControls(){
   fontSizeValue.textContent=state.fontSize;
   if(document.activeElement!==speedSlider)speedSlider.value=state.wpm;
   speedValue.textContent=state.wpm+' wpm';
+  const lh=state.lineHeight!=null?state.lineHeight:1.5;
+  if(document.activeElement!==lineHeightSlider)lineHeightSlider.value=lh;
+  lineHeightValue.textContent=lh.toFixed(1);
   const mgL=state.marginL!=null?state.marginL:6, mgR=state.marginR!=null?state.marginR:6;
   updateMarginUI(mgL,mgR);
   if(document.activeElement!==fontFamilySelect)fontFamilySelect.value=state.fontFamily;
@@ -844,6 +857,7 @@ function renderControls(){
   previewText.style.fontFamily=(FONTS[state.fontFamily]||FONTS.opensans).stack;
   previewText.style.paddingLeft=mgL+'%';
   previewText.style.paddingRight=mgR+'%';
+  previewText.style.lineHeight=lh;
   updateMonitorScale();renderHighlight();updateScrubber();
 }
 
@@ -962,6 +976,13 @@ function scrollPctFromChar(ci){
   const br=previewBox.getBoundingClientRect();
   return Math.max(0,Math.min(1,((rects[0].top-br.top)+previewBox.scrollTop)/max));
 }
+// Seek so a jumped-to line sits ~40% down from the top (closer to centre), not at the very top.
+const START_LINE_FRAC=0.4;
+function lineSeekPct(charOffset){
+  const pct=scrollPctFromChar(charOffset);
+  const max=Math.max(1,previewText.scrollHeight-previewBox.clientHeight);
+  return Math.max(0,pct-(previewBox.clientHeight*START_LINE_FRAC)/max);
+}
 function renderHighlight(){
   if(uiMode==='director'){highlightDirector();return;}
   const text=state.text,{startChar,endChar}=getHighlightRange();
@@ -1038,6 +1059,9 @@ fontIncBtn.onclick=()=>sf(2);fontDecBtn.onclick=()=>sf(-2);
 speedIncBtn.onclick=()=>ss(1);speedDecBtn.onclick=()=>ss(-1);
 fontSizeSlider.oninput=()=>{fontSizeValue.textContent=fontSizeSlider.value+'px';sendUpdate('fontSize',+fontSizeSlider.value);};
 speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value+' wpm';state.wpm=+speedSlider.value;sendUpdate('wpm',+speedSlider.value);updateReadTime();};
+const lhStep=d=>{const v=Math.round((Math.max(1,Math.min(2.5,(+lineHeightSlider.value)+d)))*10)/10;lineHeightSlider.value=v;lineHeightValue.textContent=v.toFixed(1);state.lineHeight=v;previewText.style.lineHeight=v;sendUpdate('lineHeight',v);computePreviewPxPerWord();};
+lineHeightIncBtn.onclick=()=>lhStep(0.1);lineHeightDecBtn.onclick=()=>lhStep(-0.1);
+lineHeightSlider.oninput=()=>{const v=+lineHeightSlider.value;lineHeightValue.textContent=v.toFixed(1);state.lineHeight=v;previewText.style.lineHeight=v;sendUpdate('lineHeight',v);computePreviewPxPerWord();};
 
 // ── DUAL MARGIN SLIDER (left & right, each 0–20%) ──
 function updateMarginUI(l,r){
