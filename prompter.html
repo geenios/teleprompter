@@ -505,8 +505,10 @@
     if (conn && conn.open) {
       const max = scrollArea.scrollHeight - scrollArea.clientHeight;
       const pct = max > 0 ? Math.min(1, Math.max(0, scrollPosition / max)) : 0;
-      // Skip redundant identical positions (e.g. while paused/idle)
-      if (lastSentPct !== null && Math.abs(pct - lastSentPct) < 0.00005) return;
+      // While playing, ALWAYS send so the preview is corrected every frame and never
+      // free-runs on its own fallback (the cause of slow drift). Only skip redundant
+      // sends when paused/idle.
+      if (state.playState !== 'playing' && lastSentPct !== null && Math.abs(pct - lastSentPct) < 0.00005) return;
       lastSentPct = pct;
       conn.send({ type: 'scroll', position: pct });
     }
@@ -823,6 +825,6 @@
     if (document.visibilityState === 'visible') requestWakeLock();
   });
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v29.7</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v29.8</div>
 </body>
 </html>
