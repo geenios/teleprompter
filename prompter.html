@@ -296,7 +296,7 @@
   // ---- Speed (WPM) range ----
   const WPM_MIN = 40, WPM_MAX = 250;
   // A jumped-to / looped-back line sits this fraction down from the top
-  const START_LINE_FRAC = 0.4;
+  const START_LINE_FRAC = 0.2;
 
   // ---- State ----
   let state = {
@@ -595,9 +595,13 @@
     const pct = max > 0 ? scrollPosition / max : 0;
     state = { ...state, ...partial };
     render();
+    // Preserve the reading position by fraction. Do it SYNCHRONOUSLY (reading
+    // scrollHeight forces the new layout) so the 33ms scroll broadcast can never
+    // fire in between and send a stale percentage — that was the preview mismatch.
+    const applyPct = () => setScroll(pct * (scrollArea.scrollHeight - scrollArea.clientHeight));
+    applyPct();
     requestAnimationFrame(() => {
-      const newMax = scrollArea.scrollHeight - scrollArea.clientHeight;
-      setScroll(pct * newMax);
+      applyPct(); // re-apply once fonts/layout fully settle
       if ('text' in partial || 'fontSize' in partial || 'fontFamily' in partial || 'marginL' in partial || 'marginR' in partial || 'lineHeight' in partial) {
         computePxPerWord();
         computeSectionBreakYs();

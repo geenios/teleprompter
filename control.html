@@ -175,7 +175,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .tb-btn.mode{font-weight:600;}
 .tb-btn:disabled{opacity:.35;cursor:default;}
 /* Read time */
-#readTimeEl{font-size:11px;color:var(--muted);margin-left:auto;}
+#readTimeEl{font-size:11px;color:var(--muted);}
+.speed-label{display:flex;align-items:baseline;gap:8px;min-width:0;}
 
 /* Existing comment and input: span full width below sentence, in grid col 2 */
 .dv-existing-comment{
@@ -213,6 +214,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .md-fill{position:absolute;top:50%;height:6px;transform:translateY(-50%);background:rgba(255,200,0,.28);border-radius:3px;pointer-events:none;}
 .md-thumb{position:absolute;top:50%;width:16px;height:16px;transform:translate(-50%,-50%);background:var(--accent);border:2px solid var(--bg);border-radius:50%;cursor:grab;}
 .md-thumb:active{cursor:grabbing;}
+.section-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;border-top:1px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;padding:9px 2px 5px;margin-top:2px;cursor:pointer;}
+.section-toggle:hover{color:var(--text);}
+.section-toggle #textChevron{font-size:10px;}
+#textSettings{display:flex;flex-direction:column;gap:10px;}
+#textSettings.collapsed{display:none;}
 .select-input{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:14px;outline:none;width:100%;}
 .select-input:focus{border-color:var(--accent);}
 #statusBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -344,7 +350,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
   <div id="dragHandle"></div>
 
   <div id="sidePane">
-    <div class="label">Live preview</div>
+    <div id="statusBar">
+      <span id="connDot" style="width:8px;height:8px;border-radius:50%;background:#e55;flex-shrink:0;display:inline-block;"></span>
+      <div id="sideStatus">DISCONNECTED</div>
+      <span id="persistentCode" title="Click to show QR">------</span>
+    </div>
     <div id="monitor">
       <div id="previewBox"><div id="previewText"></div></div>
     </div>
@@ -360,49 +370,47 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
       </button>
     </div>
     <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Speed</span><span class="val" id="speedValue">130 wpm</span></div>
+      <div class="ctrl-row">
+        <span class="speed-label"><span class="label">Speed</span><span id="readTimeEl"></span></span>
+        <span class="val" id="speedValue">130 wpm</span>
+      </div>
       <div class="slider-btns">
         <button class="step-btn" id="speedDecBtn">−</button>
         <input type="range" id="speedSlider" min="40" max="250" step="1">
         <button class="step-btn" id="speedIncBtn">+</button>
       </div>
     </div>
-    <hr class="divider">
-    <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Font</span></div>
-      <select id="fontFamilySelect" class="select-input"></select>
-    </div>
-    <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Font size</span><span class="val" id="fontSizeValue">75</span></div>
-      <div class="slider-btns">
-        <button class="step-btn" id="fontDecBtn">−</button>
-        <input type="range" id="fontSizeSlider" min="20" max="200" step="1">
-        <button class="step-btn" id="fontIncBtn">+</button>
+    <button class="section-toggle" id="textToggle"><span>Text</span><span id="textChevron">▾</span></button>
+    <div id="textSettings">
+      <div class="slider-row">
+        <div class="ctrl-row"><span class="label">Font</span></div>
+        <select id="fontFamilySelect" class="select-input"></select>
       </div>
-    </div>
-    <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Line spacing</span><span class="val" id="lineHeightValue">1.5</span></div>
-      <div class="slider-btns">
-        <button class="step-btn" id="lineHeightDecBtn">−</button>
-        <input type="range" id="lineHeightSlider" min="1" max="2.5" step="0.1">
-        <button class="step-btn" id="lineHeightIncBtn">+</button>
+      <div class="slider-row">
+        <div class="ctrl-row"><span class="label">Font size</span><span class="val" id="fontSizeValue">75</span></div>
+        <div class="slider-btns">
+          <button class="step-btn" id="fontDecBtn">−</button>
+          <input type="range" id="fontSizeSlider" min="20" max="200" step="1">
+          <button class="step-btn" id="fontIncBtn">+</button>
+        </div>
       </div>
-    </div>
-    <div class="slider-row">
-      <div class="ctrl-row"><span class="label">Side margins</span><span class="val" id="marginValue">L 6 · R 6</span></div>
-      <div id="marginDual" class="margin-dual">
-        <div class="md-track"></div>
-        <div class="md-fill" id="mdFill"></div>
-        <div class="md-thumb" id="mdThumbL" title="Left margin"></div>
-        <div class="md-thumb" id="mdThumbR" title="Right margin"></div>
+      <div class="slider-row">
+        <div class="ctrl-row"><span class="label">Line spacing</span><span class="val" id="lineHeightValue">1.5</span></div>
+        <div class="slider-btns">
+          <button class="step-btn" id="lineHeightDecBtn">−</button>
+          <input type="range" id="lineHeightSlider" min="1" max="2.5" step="0.1">
+          <button class="step-btn" id="lineHeightIncBtn">+</button>
+        </div>
       </div>
-    </div>
-    <hr class="divider">
-    <div id="statusBar">
-      <span id="connDot" style="width:8px;height:8px;border-radius:50%;background:#e55;flex-shrink:0;display:inline-block;"></span>
-      <div id="sideStatus">DISCONNECTED</div>
-      <span id="persistentCode" title="Click to show QR">------</span>
-      <span id="readTimeEl"></span>
+      <div class="slider-row">
+        <div class="ctrl-row"><span class="label">Side margins</span><span class="val" id="marginValue">L 6 · R 6</span></div>
+        <div id="marginDual" class="margin-dual">
+          <div class="md-track"></div>
+          <div class="md-fill" id="mdFill"></div>
+          <div class="md-thumb" id="mdThumbL" title="Left margin"></div>
+          <div class="md-thumb" id="mdThumbR" title="Right margin"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -859,7 +867,7 @@ function renderControls(){
   previewText.style.paddingLeft=mgL+'%';
   previewText.style.paddingRight=mgR+'%';
   previewText.style.lineHeight=lh;
-  updateMonitorScale();renderHighlight();updateScrubber();
+  updateMonitorScale();correctPreview(scrollPct);renderHighlight();updateScrubber();
 }
 
 // ── DRAGGABLE SPLIT ───────────────────────────────────────
@@ -978,7 +986,7 @@ function scrollPctFromChar(ci){
   return Math.max(0,Math.min(1,((rects[0].top-br.top)+previewBox.scrollTop)/max));
 }
 // Seek so a jumped-to line sits ~40% down from the top (closer to centre), not at the very top.
-const START_LINE_FRAC=0.4;
+const START_LINE_FRAC=0.2;
 function lineSeekPct(charOffset){
   // Advance past leading whitespace/newlines so we target the line holding the
   // first actual WORD, not the (often blank) line above it.
@@ -1058,15 +1066,15 @@ loopBtn.onclick=()=>{
 mirrorHBtn.onclick=()=>sendUpdate('mirroredH',!state.mirroredH);
 mirrorVBtn.onclick=()=>sendUpdate('mirroredV',!state.mirroredV);
 fontFamilySelect.onchange=()=>sendUpdate('fontFamily',fontFamilySelect.value);
-const sf=d=>{const v=Math.max(20,Math.min(200,+fontSizeSlider.value+d));fontSizeSlider.value=v;fontSizeValue.textContent=v+'px';sendUpdate('fontSize',v);};
+const sf=d=>{const v=Math.max(20,Math.min(200,+fontSizeSlider.value+d));fontSizeSlider.value=v;fontSizeValue.textContent=v+'px';state.fontSize=v;updateMonitorScale();correctPreview(scrollPct);renderHighlight();sendUpdate('fontSize',v);updateReadTime();};
 const ss=d=>{const v=Math.max(WPM_MIN,Math.min(WPM_MAX,+speedSlider.value+d));speedSlider.value=v;speedValue.textContent=v+' wpm';state.wpm=v;sendUpdate('wpm',v);updateReadTime();};
 fontIncBtn.onclick=()=>sf(2);fontDecBtn.onclick=()=>sf(-2);
 speedIncBtn.onclick=()=>ss(1);speedDecBtn.onclick=()=>ss(-1);
-fontSizeSlider.oninput=()=>{fontSizeValue.textContent=fontSizeSlider.value+'px';sendUpdate('fontSize',+fontSizeSlider.value);};
+fontSizeSlider.oninput=()=>{const v=+fontSizeSlider.value;fontSizeValue.textContent=v+'px';state.fontSize=v;updateMonitorScale();correctPreview(scrollPct);renderHighlight();sendUpdate('fontSize',v);updateReadTime();};
 speedSlider.oninput=()=>{speedValue.textContent=speedSlider.value+' wpm';state.wpm=+speedSlider.value;sendUpdate('wpm',+speedSlider.value);updateReadTime();};
-const lhStep=d=>{const v=Math.round((Math.max(1,Math.min(2.5,(+lineHeightSlider.value)+d)))*10)/10;lineHeightSlider.value=v;lineHeightValue.textContent=v.toFixed(1);state.lineHeight=v;previewText.style.lineHeight=v;sendUpdate('lineHeight',v);computePreviewPxPerWord();};
+const lhStep=d=>{const v=Math.round((Math.max(1,Math.min(2.5,(+lineHeightSlider.value)+d)))*10)/10;lineHeightSlider.value=v;lineHeightValue.textContent=v.toFixed(1);state.lineHeight=v;previewText.style.lineHeight=v;computePreviewPxPerWord();correctPreview(scrollPct);renderHighlight();updateScrubber();sendUpdate('lineHeight',v);};
 lineHeightIncBtn.onclick=()=>lhStep(0.1);lineHeightDecBtn.onclick=()=>lhStep(-0.1);
-lineHeightSlider.oninput=()=>{const v=+lineHeightSlider.value;lineHeightValue.textContent=v.toFixed(1);state.lineHeight=v;previewText.style.lineHeight=v;sendUpdate('lineHeight',v);computePreviewPxPerWord();};
+lineHeightSlider.oninput=()=>{const v=+lineHeightSlider.value;lineHeightValue.textContent=v.toFixed(1);state.lineHeight=v;previewText.style.lineHeight=v;computePreviewPxPerWord();correctPreview(scrollPct);renderHighlight();updateScrubber();sendUpdate('lineHeight',v);};
 
 // ── DUAL MARGIN SLIDER (left & right, each 0–20%) ──
 function updateMarginUI(l,r){
@@ -1083,7 +1091,7 @@ function mdApply(side,v){
   v=Math.max(MARGIN_MIN,Math.min(MARGIN_MAX,Math.round(v)));
   if(side==='L'){state.marginL=v;previewText.style.paddingLeft=v+'%';sendUpdate('marginL',v);}
   else{state.marginR=v;previewText.style.paddingRight=v+'%';sendUpdate('marginR',v);}
-  updateMarginUI(state.marginL,state.marginR);computePreviewPxPerWord();
+  updateMarginUI(state.marginL,state.marginR);computePreviewPxPerWord();correctPreview(scrollPct);renderHighlight();updateScrubber();
 }
 function mdMove(e){
   if(!mdDrag)return;
@@ -1099,6 +1107,18 @@ mdThumbR.addEventListener('pointermove',mdMove);
 const mdEnd=()=>{mdDrag=null;};
 mdThumbL.addEventListener('pointerup',mdEnd);mdThumbR.addEventListener('pointerup',mdEnd);
 mdThumbL.addEventListener('pointercancel',mdEnd);mdThumbR.addEventListener('pointercancel',mdEnd);
+
+// ── COLLAPSIBLE TEXT SETTINGS ──
+const textToggle=$('textToggle'),textSettings=$('textSettings'),textChevron=$('textChevron');
+function setTextCollapsed(c){
+  textSettings.classList.toggle('collapsed',c);
+  textChevron.textContent=c?'▸':'▾';
+  if(!c)updateMarginUI(state.marginL,state.marginR); // thumbs need a laid-out width
+  try{localStorage.setItem('tp_text_collapsed',c?'1':'0');}catch(e){}
+}
+textToggle.onclick=()=>setTextCollapsed(!textSettings.classList.contains('collapsed'));
+try{if(localStorage.getItem('tp_text_collapsed')==='1')setTextCollapsed(true);}catch(e){}
+
 textArea.oninput=()=>{
   const v=textArea.value;setTimeout(()=>sendUpdate('text',v),250);
   getActiveScript().text=v;state.text=v;previewText.textContent=v;
