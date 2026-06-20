@@ -214,9 +214,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .md-fill{position:absolute;top:50%;height:6px;transform:translateY(-50%);background:rgba(255,200,0,.28);border-radius:3px;pointer-events:none;}
 .md-thumb{position:absolute;top:50%;width:16px;height:16px;transform:translate(-50%,-50%);background:var(--accent);border:2px solid var(--bg);border-radius:50%;cursor:grab;}
 .md-thumb:active{cursor:grabbing;}
-.section-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;border-top:1px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;padding:9px 2px 5px;margin-top:2px;cursor:pointer;}
-.section-toggle:hover{color:var(--text);}
-.section-toggle #textChevron{font-size:10px;}
+.preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.text-toggle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;border-top:1px solid var(--border);padding:9px 2px 6px;margin-top:2px;cursor:pointer;}
+.text-toggle .label{cursor:pointer;}
+.text-toggle:hover .label,.text-toggle:hover #textChevron{color:var(--text);}
+.text-toggle #textChevron{font-size:10px;color:var(--muted);}
 #textSettings{display:flex;flex-direction:column;gap:10px;}
 #textSettings.collapsed{display:none;}
 .select-input{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:14px;outline:none;width:100%;}
@@ -350,10 +352,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
   <div id="dragHandle"></div>
 
   <div id="sidePane">
-    <div id="statusBar">
-      <span id="connDot" style="width:8px;height:8px;border-radius:50%;background:#e55;flex-shrink:0;display:inline-block;"></span>
-      <div id="sideStatus">DISCONNECTED</div>
-      <span id="persistentCode" title="Click to show QR">------</span>
+    <div class="preview-head">
+      <span class="label">Live preview</span>
+      <div id="statusBar">
+        <span id="connDot" style="width:8px;height:8px;border-radius:50%;background:#e55;flex-shrink:0;display:inline-block;"></span>
+        <div id="sideStatus">DISCONNECTED</div>
+        <span id="persistentCode" title="Click to show QR">------</span>
+      </div>
     </div>
     <div id="monitor">
       <div id="previewBox"><div id="previewText"></div></div>
@@ -380,12 +385,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
         <button class="step-btn" id="speedIncBtn">+</button>
       </div>
     </div>
-    <button class="section-toggle" id="textToggle"><span>Text</span><span id="textChevron">▾</span></button>
+    <button class="text-toggle" id="textToggle"><span class="label">Text</span><span id="textChevron">▾</span></button>
     <div id="textSettings">
-      <div class="slider-row">
-        <div class="ctrl-row"><span class="label">Font</span></div>
-        <select id="fontFamilySelect" class="select-input"></select>
-      </div>
+      <select id="fontFamilySelect" class="select-input"></select>
       <div class="slider-row">
         <div class="ctrl-row"><span class="label">Font size</span><span class="val" id="fontSizeValue">75</span></div>
         <div class="slider-btns">
@@ -537,7 +539,11 @@ function getParagraphs(text){
   const r=[];let off=0;
   for(const part of text.split(/(\n{2,})/)){
     if(/^\n+$/.test(part)){off+=part.length;continue;}
-    const t=part.trim();if(t)r.push({text:t,offset:off,sentences:parseSentences(t,off)});
+    // Account for whitespace trimmed off the front, so offsets stay aligned to
+    // the full text (otherwise section/marker positions drift by the lead length).
+    const lead=part.length-part.replace(/^\s+/,'').length;
+    const t=part.trim();
+    if(t)r.push({text:t,offset:off+lead,sentences:parseSentences(t,off+lead)});
     off+=part.length;
   }
   return r;
@@ -986,7 +992,7 @@ function scrollPctFromChar(ci){
   return Math.max(0,Math.min(1,((rects[0].top-br.top)+previewBox.scrollTop)/max));
 }
 // Seek so a jumped-to line sits ~40% down from the top (closer to centre), not at the very top.
-const START_LINE_FRAC=0.2;
+const START_LINE_FRAC=0.1;
 function lineSeekPct(charOffset){
   // Advance past leading whitespace/newlines so we target the line holding the
   // first actual WORD, not the (often blank) line above it.
@@ -1321,6 +1327,6 @@ setInterval(()=>{
   }
 },2000);
 </script>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v29</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:rgba(255,255,255,0.25);font-family:'Inter',sans-serif;pointer-events:none;z-index:9999;letter-spacing:.04em;">v29.7</div>
 </body>
 </html>
